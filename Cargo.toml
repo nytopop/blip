@@ -1,0 +1,23 @@
+[package]
+name = "blip"
+version = "0.1.0"
+authors = ["nytopop <ericizoita@gmail.com>"]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tonic = "0.1.0-beta.1"
+prost = "0.5"
+
+[dependencies.futures]
+version = "0.3"
+features = [ "alloc" ]
+
+[dependencies.tokio]
+version = "0.2"
+features = [ "full" ] # TODO: constrain this
+
+[build-dependencies]
+tonic-build = "0.1.0-beta.1"
