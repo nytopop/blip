@@ -1,0 +1,177 @@
+// Copyright 2020 nytopop (Eric Izoita)
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+syntax = "proto2";
+
+package blip;
+
+// TODO(doc)
+service Membership {
+	rpc PreJoin(PreJoinReq) returns (PreJoinResp);
+
+	rpc Join(JoinReq) returns (JoinResp);
+
+	rpc BatchedAlert(BatchedAlertReq) returns (Ack);
+
+	rpc FastPhase2b(FastPhase2bReq) returns (Ack);
+
+	rpc Phase1a(Phase1aReq) returns (Ack);
+
+	rpc Phase1b(Phase1bReq) returns (Ack);
+
+	rpc Phase2a(Phase2aReq) returns (Ack);
+
+	rpc Phase2b(Phase2bReq) returns (Ack);
+
+	rpc Broadcast(BroadcastReq) returns (Ack);
+
+	rpc Probe(ProbeReq) returns (ProbeResp);
+}
+
+// A listening address.
+message Endpoint {
+	// An ip address in binary form. Exactly 4 or 16 bytes long.
+	required bytes host = 1;
+	// Port number. Is 0xffff or smaller.
+	required uint32 port = 2;
+	// Whether tls is enabled.
+	required bool tls = 3;
+}
+
+// A 128 bit unique identifier.
+message NodeId {
+	// The high bits.
+	required uint64 high = 1;
+	// The low bits.
+	required uint64 low = 2;
+}
+
+// Metadata propagated by each node during the join protocol.
+message Metadata {
+	// Any exposed keys.
+	map<string, bytes> keys = 1;
+}
+
+// A listening address, as well as any metadata associated with the node that
+// address refers to.
+message NodeMetadata {
+	// A listening address.
+	required Endpoint node = 1;
+	// The node's metadata.
+	required Metadata meta = 2;
+}
+
+// An acknowledgement of receipt, used as a response for rpcs that don't convey
+// any information other than that they succeeded.
+message Ack {}
+
+message PreJoinReq {
+	required Endpoint sender = 1;
+	required NodeId uuid = 2;
+}
+
+message PreJoinResp {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	repeated Endpoint contact = 3;
+}
+
+message JoinReq {
+	required Endpoint sender = 1;
+	required uint64 ring = 2;
+	required NodeId uuid = 3;
+	required uint64 conf_id = 4;
+	required Metadata meta = 5;
+}
+
+message JoinResp {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	repeated NodeMetadata nodes = 3;
+	repeated NodeId uuids = 4;
+}
+
+message BatchedAlertReq {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	repeated Edge edges = 3;
+}
+
+message Edge {
+	required Endpoint node = 1;
+	required uint64 ring = 2;
+	optional Join join = 3;
+}
+
+message Join {
+	required NodeId uuid = 1;
+	required Metadata meta = 2;
+}
+
+message FastPhase2bReq {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	repeated Endpoint nodes = 3;
+}
+
+message Rank {
+	required uint32 round = 1;
+	required uint64 node_idx = 2;
+}
+
+message Phase1aReq {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	required Rank rank = 3;
+}
+
+message Phase1bReq {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	required Rank rnd = 3;
+	required Rank vrnd = 4;
+	repeated Endpoint vval = 5;
+}
+
+message Phase2aReq {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	required Rank rnd = 3;
+	repeated Endpoint vval = 4;
+}
+
+message Phase2bReq {
+	required Endpoint sender = 1;
+	required uint64 conf_id = 2;
+	required Rank rnd = 3;
+	repeated Endpoint nodes = 4;
+}
+
+message BroadcastReq {
+	required uint64 unix = 1;
+	required uint64 uniq = 2;
+
+	oneof broadcasted {
+		BatchedAlertReq BatchedAlert = 3;
+		FastPhase2bReq FastPhase2b = 4;
+		Phase1aReq Phase1a = 5;
+		Phase1bReq Phase1b = 6;
+		Phase2aReq Phase2a = 7;
+		Phase2bReq Phase2b = 8;
+	}
+}
+
+message ProbeReq {}
+
+message ProbeResp {
+	required NodeStatus status = 1;
+	required uint64 conf_id = 2;
+}
+
+enum NodeStatus {
+	HEALTHY  = 0;
+	DEGRADED = 1;
+}

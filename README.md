@@ -17,6 +17,7 @@
 
 # References
 * [Stable and Consistent Membership at Scale with Rapid](https://arxiv.org/abs/1803.03620)
+* [Fast Paxos](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf)
 
 # License
 Licensed under either of

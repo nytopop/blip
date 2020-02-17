@@ -8,8 +8,18 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tonic = "0.1.0-beta.1"
-prost = "0.5"
+prost = "0.6"
+bytes = "0.5"
+http = "0.2"
+tracing = "0.1"
+fnv = "1.0"
+rand = "0.7"
+failure = "0.1"
+failure_derive = "0.1"
+
+[dependencies.tonic]
+version = "0.1"
+features = [ "transport" , "tls" ]
 
 [dependencies.futures]
 version = "0.3"
@@ -17,7 +27,17 @@ features = [ "alloc" ]
 
 [dependencies.tokio]
 version = "0.2"
-features = [ "full" ] # TODO: constrain this
+features = [
+  "sync",
+  "rt-threaded",
+  "time",
+  "stream",
+  "macros"
+]
 
 [build-dependencies]
-tonic-build = "0.1.0-beta.1"
+tonic-build = "0.1"
+
+[dev-dependencies]
+quickcheck = "0.9"
+quickcheck_macros = "0.9"
