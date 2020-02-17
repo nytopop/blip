@@ -23,7 +23,6 @@ macro_rules! derive_cmp_with {
 
         impl PartialOrd for $type {
             fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-                #[inline]
                 fn access<'a>(e: &'a $type) -> impl PartialOrd + 'a {
                     let $access = e;
                     $get
@@ -67,6 +66,24 @@ pub enum EndpointError {
 }
 
 impl TryFrom<&Endpoint> for transport::Endpoint {
+    type Error = failure::Compat<EndpointError>;
+
+    fn try_from(e: &Endpoint) -> Result<Self, Self::Error> {
+        let addr: SocketAddr = e
+            .try_into()
+            .map_err(EndpointError::InvalidSocketAddr)
+            .map_err(Fail::compat)?;
+
+        let scheme = if e.tls { "https" } else { "http" };
+
+        format!("{}://{}", scheme, addr)
+            .try_into()
+            .map_err(EndpointError::InvalidUri)
+            .map_err(Fail::compat)
+    }
+}
+
+impl TryFrom<&Endpoint> for http::Uri {
     type Error = failure::Compat<EndpointError>;
 
     fn try_from(e: &Endpoint) -> Result<Self, Self::Error> {

@@ -11,7 +11,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[inline]
 fn unixtime() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

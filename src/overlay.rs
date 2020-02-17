@@ -5,6 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 //! Batteries-included grpc service mesh.
+#[cfg(feature = "simulation")]
+use crate::simulation::Network;
+
 use super::cluster::{
     cut::Subscription,
     partition::{self, Rejoin},
@@ -242,6 +245,59 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// Consume this [Mesh], creating a future that will run on a tokio executor.
     ///
     /// Resolves once the mesh has exited.
+    #[cfg(feature = "simulation")]
+    pub async fn serve_simulated(self, net: Network, addr: SocketAddr) -> Fallible<()> {
+        self.serve_simulated_shutdown(net, addr, pending()).await
+    }
+
+    /// Consume this [Mesh], creating a future that will run on a tokio executor.
+    ///
+    /// Shutdown will be initiated when `signal` resolves.
+    ///
+    /// Resolves once the mesh has exited.
+    #[cfg(feature = "simulation")]
+    pub async fn serve_simulated_shutdown<F>(
+        mut self,
+        net: Network,
+        addr: SocketAddr,
+        signal: F,
+    ) -> Fallible<()>
+    where
+        F: Future<Output = ()> + Send,
+    {
+        let conns = net.bind(addr).await?;
+
+        let mut cluster = Cluster::new(self.cfg, addr);
+        cluster.use_simulated_net(net);
+        let cluster = Arc::new(cluster);
+
+        let f_cuts = cluster.subscribe();
+        let w_cuts = cluster.subscribe();
+
+        let svcs: FuturesUnordered<_> = (self.svcs)
+            .into_iter()
+            .map(|s| s.accept(cluster.subscribe()))
+            .collect();
+
+        let mut stream: FuturesUnordered<_> = vec![
+            svcs.for_each(|_| async {}).then(|_| pending()).boxed(),
+            self.grpc
+                .add_service(Arc::clone(&cluster).into_service())
+                .serve_with_incoming_shutdown(conns, signal)
+                .map_err(|e| e.into())
+                .boxed(),
+            Arc::clone(&cluster).detect_faults(f_cuts).boxed(),
+            St::handle_parts(Arc::clone(&cluster), w_cuts),
+        ]
+        .into_iter()
+        .collect();
+
+        stream.next().await.unwrap()
+    }
+
+    /// Consume this [Mesh], creating a future that will run on a tokio executor.
+    ///
+    /// Resolves once the mesh has exited.
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
         self.serve_with_shutdown(addr, pending()).await
     }
@@ -309,6 +365,51 @@ where
         Mesh { cfg, grpc, svcs }
     }
 
+    #[cfg(feature = "simulation")]
+    pub async fn serve_simulated(self, net: Network, addr: SocketAddr) -> Fallible<()> {
+        self.serve_simulated_shutdown(net, addr, pending()).await
+    }
+
+    #[cfg(feature = "simulation")]
+    pub async fn serve_simulated_shutdown<F>(
+        self,
+        net: Network,
+        addr: SocketAddr,
+        signal: F,
+    ) -> Fallible<()>
+    where
+        F: Future<Output = ()> + Send,
+    {
+        let conns = net.bind(addr).await?;
+
+        let mut cluster = Cluster::new(self.cfg, addr);
+        cluster.use_simulated_net(net);
+        let cluster = Arc::new(cluster);
+
+        let f_cuts = cluster.subscribe();
+        let w_cuts = cluster.subscribe();
+
+        let svcs: FuturesUnordered<_> = (self.svcs)
+            .into_iter()
+            .map(|s| s.accept(cluster.subscribe()))
+            .collect();
+
+        let mut stream: FuturesUnordered<_> = vec![
+            svcs.for_each(|_| async {}).then(|_| pending()).boxed(),
+            self.grpc
+                .add_service(Arc::clone(&cluster).into_service())
+                .serve_with_incoming_shutdown(conns, signal)
+                .map_err(|e| e.into())
+                .boxed(),
+            Arc::clone(&cluster).detect_faults(f_cuts).boxed(),
+            St::handle_parts(Arc::clone(&cluster), w_cuts),
+        ]
+        .into_iter()
+        .collect();
+
+        stream.next().await.unwrap()
+    }
+
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
         self.serve_with_shutdown(addr, pending()).await
     }
@@ -366,12 +467,10 @@ impl<Request, S: Service<Request>> Service<Request> for GrpcService<S> {
     type Error = S::Error;
     type Future = S::Future;
 
-    #[inline]
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.svc.poll_ready(ctx)
     }
 
-    #[inline]
     fn call(&mut self, req: Request) -> Self::Future {
         self.svc.call(req)
     }
@@ -421,7 +520,7 @@ pub trait MeshService: Send {
     /// will starve the executor if it does.
     ///
     /// If the mesh exits (for any reason), this future will be dropped if it has not yet
-    /// resolved (this may occur at any yield point).
+    /// resolved (which may occur at any yield point).
     async fn accept(self, cuts: Subscription);
 }
 

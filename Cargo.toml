@@ -7,6 +7,17 @@ license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = []
+simulation = [
+	"hyper",
+	"tower",
+	"tower-service",
+	"tower-load",
+	"tower-make",
+	"pin-project"
+]
+
 [dependencies]
 prost = "0.6"
 bytes = "0.5"
@@ -35,9 +46,35 @@ features = [
   "macros"
 ]
 
+[dependencies.hyper]
+version = "0.13"
+optional = true
+
+[dependencies.tower]
+version = "0.3"
+optional = true
+
+[dependencies.tower-service]
+version = "0.3"
+optional = true
+
+[dependencies.tower-load]
+version = "0.3"
+optional = true
+
+[dependencies.tower-make]
+version = "0.3"
+optional = true
+
+[dependencies.pin-project]
+version = "0.4"
+optional = true
+
 [build-dependencies]
 tonic-build = "0.1"
 
 [dev-dependencies]
 quickcheck = "0.9"
 quickcheck_macros = "0.9"
+quickcheck_async = "0.1"
+async_ctx = "0.1"

@@ -11,7 +11,7 @@
   </a>
   <!-- crates.io license --!>
   <a href="./LICENSE-APACHE">
-    <img alt="Apache-2.0 OR MIT" src="https://img.shields.io/crates/l/askii?style=flat-square">
+    <img alt="Apache-2.0 OR MIT" src="https://img.shields.io/crates/l/blip?style=flat-square">
   </a>
 </p>
 

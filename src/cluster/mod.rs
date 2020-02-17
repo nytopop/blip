@@ -14,6 +14,13 @@ pub mod cut;
 pub mod partition;
 mod proto;
 
+#[cfg(feature = "simulation")]
+use crate::simulation::{ChannelStub, Network};
+#[cfg(not(feature = "simulation"))]
+use futures::future::{ready, FutureExt};
+#[cfg(not(feature = "simulation"))]
+use tonic::transport::Channel;
+
 use super::collections::{EventFilter, EventId, FreqSet, Tumbler};
 use cut::{Member, MultiNodeCut, Subscription};
 use proto::{
@@ -26,7 +33,7 @@ use proto::{
 use failure::{Compat, Fallible};
 use fnv::FnvHasher;
 use futures::{
-    future::TryFutureExt,
+    future::{BoxFuture, TryFutureExt},
     stream::{FuturesUnordered, StreamExt},
 };
 use rand::{thread_rng, Rng};
@@ -52,6 +59,8 @@ use tonic::{
     Request, Response, Status,
 };
 
+type DynFuture<T> = BoxFuture<'static, T>;
+
 #[doc(hidden)]
 pub struct Config<St> {
     #[allow(dead_code)]
@@ -69,6 +78,8 @@ type GrpcResponse<T> = Grpc<Response<T>>;
 
 #[doc(hidden)]
 pub struct Cluster<St> {
+    #[cfg(feature = "simulation")]
+    net: Option<Network>,
     cfg: Config<St>,
     addr: SocketAddr,
     state: Arc<RwLock<State>>,
@@ -243,12 +254,9 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
             return Err(Status::aborted("rank is too low"));
         }
 
-        let sender = self
-            .resolve_endpoint(&sender)
-            .map_err(|e| Status::invalid_argument(format!("{:?}", e)))?;
-
-        let mut sender = MembershipClient::connect(sender)
-            .map_err(|e| Status::unavailable(e.to_string()))
+        let mut sender = self
+            .connect_to(&sender)
+            .map_err(|e| Status::invalid_argument(format!("{:?}", e)))
             .await?;
 
         state.px_rnd = rank.clone();
@@ -405,12 +413,12 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
                 broadcasted: Some(broadcasted.clone()),
             });
 
-            let subject = self.resolve_endpoint(&subject).unwrap();
+            let subject = self.connect_to(&subject);
 
-            task::spawn(async {
-                let mut client = MembershipClient::connect(subject)
-                    .await
-                    .map_err(|e| Status::unavailable(e.to_string()))?;
+            task::spawn(async move {
+                let mut client = subject
+                    .map_err(|e| Status::unavailable(e.to_string()))
+                    .await?;
 
                 client.broadcast(req).await
             });
@@ -475,11 +483,18 @@ impl<St: partition::Strategy> Cluster<St> {
         let (cuts, _) = broadcast::channel(32);
 
         Cluster {
+            #[cfg(feature = "simulation")]
+            net: None,
             cfg,
             addr,
             state,
             cuts,
         }
+    }
+
+    #[cfg(feature = "simulation")]
+    pub(crate) fn use_simulated_net(&mut self, net: Network) {
+        self.net = Some(net);
     }
 
     pub(crate) fn into_service(self: Arc<Self>) -> MembershipServer<Arc<Self>> {
@@ -542,11 +557,41 @@ impl<St: partition::Strategy> Cluster<St> {
     }
 
     async fn probe_endpoint(&self, ring: usize, e: Endpoint) -> Fallible<usize> {
-        let te = self.resolve_endpoint(&e)?;
-        let mut c = MembershipClient::connect(te).await?;
+        let mut c = self.connect_to(&e).await?;
         c.probe(ProbeReq {}).await?;
 
         Ok(ring)
+    }
+
+    #[cfg(not(feature = "simulation"))]
+    fn connect_to(&self, e: &Endpoint) -> DynFuture<Fallible<MembershipClient<Channel>>> {
+        match self.resolve_endpoint(e) {
+            Ok(tg) => MembershipClient::connect(tg).map_err(|e| e.into()).boxed(),
+            Err(e) => ready(Err(e.into())).boxed(),
+        }
+    }
+
+    #[cfg(feature = "simulation")]
+    fn connect_to(&self, e: &Endpoint) -> DynFuture<Fallible<MembershipClient<ChannelStub>>> {
+        if let Some(net) = self.net.clone() {
+            let uri: Result<http::Uri, _> = e.try_into();
+
+            return Box::pin(async move {
+                let c = net.connect(uri?).await?;
+                let stub = ChannelStub::Simulated(c);
+
+                Ok(MembershipClient::new(stub))
+            });
+        }
+
+        let tg = self.resolve_endpoint(e);
+
+        Box::pin(async move {
+            let c = (tg?).connect().await?;
+            let stub = ChannelStub::Native(c);
+
+            Ok(MembershipClient::new(stub))
+        })
     }
 
     fn resolve_endpoint(&self, e: &Endpoint) -> Result<transport::Endpoint, Compat<EndpointError>> {
@@ -1032,7 +1077,7 @@ impl State {
         self.conf_id
     }
 
-    /// Respond to any inflight [Cluster::join] calls.
+    /// Respond to any inflight join calls.
     fn respond_to_joiners(&mut self, cut: &MultiNodeCut, sender: Endpoint) {
         let resp = self.join_response(sender);
 
