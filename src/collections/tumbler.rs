@@ -203,10 +203,13 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
     /// Returns an iterator over every leading edge of `e`, across all rings.
     ///
     /// ```
+    /// // where e: 3
+    /// //            |
     /// //       [ 0, 4, 3, 1, 2, 5 ]    ring: 0
     /// // [ 0, 2, 1, 5, 3, 4 ]          ring: 1
     /// //       [ 1, 0, 3, 4, 5, 2 ]    ring: 2
     /// //          [ 4, 3, 2, 5, 0, 1 ] ring: 3
+    /// //            |
     /// //
     /// // (4, 3) -> 4
     /// // (5, 3) -> 5
@@ -226,17 +229,20 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
     /// Returns an iterator over every trailing edge of `e`, across all rings.
     ///
     /// ```
+    /// // where e: 3
+    /// //                  |
     /// //       [ 0, 4, 3, 1, 2, 5 ]    ring: 0
     /// // [ 0, 2, 1, 5, 3, 4 ]          ring: 1
     /// //       [ 1, 0, 3, 4, 5, 2 ]    ring: 2
     /// //          [ 4, 3, 2, 5, 0, 1 ] ring: 3
+    /// //                  |
     /// //
     /// // (3, 1) -> 1
     /// // (3, 4) -> 4
     /// // (3, 4) -> 4
     /// // (3, 2) -> 2
     /// //
-    /// // [4, 5, 0, 4]
+    /// // [1, 4, 4, 2]
     /// ```
     pub fn successors<'a>(&'a self, e: &'a T) -> impl Navigable<&T> {
         (0..self.size()).flat_map(move |k| {
