@@ -17,6 +17,7 @@ mod collections;
 pub mod cluster;
 pub mod overlay;
 #[cfg(feature = "simulation")]
+#[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
 pub mod simulation;
 
 #[doc(inline)]
