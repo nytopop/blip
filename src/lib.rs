@@ -7,7 +7,7 @@
 //! A Rust framework for writing fast and highly resilient gRPC mesh services.
 #![feature(trait_alias, entry_insert)]
 #![warn(rust_2018_idioms, missing_docs)]
-#![doc(html_logo_url = "https://github.com/nytopop/blib/raw/master/blip.png")]
+#![doc(html_logo_url = "https://raw.githubusercontent.com/nytopop/blip/master/blip.png")]
 
 #[macro_use]
 mod macros;
