@@ -72,6 +72,13 @@ impl Default for Mesh<Rejoin, Server> {
     }
 }
 
+impl Mesh<Rejoin, Server> {
+    /// Create a new [Mesh].
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Methods for blip-specific membership protocol configuration.
 impl<St, R> Mesh<St, R> {
     /// Set a threshold of reports required to place a member into unstable report mode.
@@ -448,7 +455,7 @@ where
 /// A wrapper around an arbitrary [Service] that will implement [MeshService] for free.
 ///
 /// This can be used to serve a service that isn't mesh-aware.
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct GrpcService<S> {
     svc: S,
 }
