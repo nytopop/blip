@@ -1,11 +1,15 @@
 [package]
 name = "blip"
-version = "0.1.0"
+version = "0.1.0-alpha.0"
 authors = ["nytopop <ericizoita@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "A framework for writing in-process gRPC mesh services."
+homepage = "https://github.com/nytopop/blip"
+repository = "https://github.com/nytopop/blip"
+documentation = "https://docs.rs/blip"
+keywords = ["rapid", "membership", "mesh", "grpc", "cluster"]
+categories = ["network-programming"]
 
 [features]
 default = []
