@@ -128,7 +128,9 @@ impl<St, R> Mesh<St, R> {
     /// Sets the strategy with which to handle network partitions.
     ///
     /// See [partition] for possible options to use here.
-    pub fn part_strategy<_St: partition::Strategy>(Mesh { cfg, grpc, svcs }: Self) -> Mesh<_St, R> {
+    // TODO: actually write different strategies, or remove the parameterization
+    pub fn part_strategy<_St: partition::Strategy>(self) -> Mesh<_St, R> {
+        let Mesh { cfg, grpc, svcs } = self;
         let strategy = _St::default();
 
         #[rustfmt::skip]
