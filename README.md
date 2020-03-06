@@ -1,6 +1,10 @@
 <p align="center">
   <!-- project logo --!>
   <img src="blip.png" alt="logo"><br><br>
+  <!-- docs.rs --!>
+  <a href="https://docs.rs/blip">
+    <img alt="Docs.rs" src="https://docs.rs/blip/badge.svg">
+  </a>
   <!-- crates.io version !-->
   <a href="https://crates.io/crates/blip">
     <img alt="Crates.io" src="https://img.shields.io/crates/v/blip?style=flat-square">
