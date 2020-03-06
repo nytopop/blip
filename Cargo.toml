@@ -1,6 +1,6 @@
 [package]
 name = "blip"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 authors = ["nytopop <ericizoita@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -10,6 +10,10 @@ repository = "https://github.com/nytopop/blip"
 documentation = "https://docs.rs/blip"
 keywords = ["rapid", "membership", "mesh", "grpc", "cluster"]
 categories = ["network-programming", "asynchronous"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
