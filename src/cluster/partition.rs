@@ -21,10 +21,16 @@ use tokio::time::{delay_for, timeout};
 
 const JOIN_DELAY: Duration = Duration::from_millis(1000);
 
+mod private {
+    pub trait Sealed {}
+}
+
 /// A strategy to handle network partitions where the local member is ejected from an
 /// active cluster.
+///
+/// This trait is sealed against outside implementations.
 #[crate::async_trait]
-pub trait Strategy: Default + Send + Sync + 'static {
+pub trait Strategy: private::Sealed + Default + Send + Sync + 'static {
     // If this method exits, the mesh goes down with it (!).
     #[doc(hidden)]
     async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> Fallible<()>;
@@ -33,6 +39,8 @@ pub trait Strategy: Default + Send + Sync + 'static {
 /// Rejoin the existing cluster through random healthy members.
 #[derive(Default)]
 pub struct Rejoin {}
+
+impl private::Sealed for Rejoin {}
 
 #[crate::async_trait]
 impl Strategy for Rejoin {
