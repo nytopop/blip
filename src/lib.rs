@@ -10,7 +10,12 @@
 //! * `simulation`: Enables the simulation network for testing purposes.
 #![feature(trait_alias, entry_insert, doc_cfg)]
 #![warn(rust_2018_idioms, missing_docs)]
-#![doc(html_logo_url = "https://raw.githubusercontent.com/nytopop/blip/master/blip.png")]
+#![doc(
+    issue_tracker_base_url = "https://github.com/nytopop/blip/issues/",
+    html_logo_url = "https://raw.githubusercontent.com/nytopop/blip/master/blip.png",
+    html_root_url = "https://docs.rs/blip/0.1.0-alpha.5",
+    test(no_crate_inject, attr(deny(rust_2018_idioms)))
+)]
 
 #[macro_use]
 mod macros;
