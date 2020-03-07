@@ -5,6 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 //! A Rust framework for writing fast and highly resilient gRPC mesh services.
+//!
+//! # Feature Flags
+//! * `simulation`: Enables the simulation network for testing purposes.
 #![feature(trait_alias, entry_insert)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![doc(html_logo_url = "https://raw.githubusercontent.com/nytopop/blip/master/blip.png")]
