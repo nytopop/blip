@@ -20,7 +20,6 @@ use futures::{
     stream::{FuturesUnordered, StreamExt},
 };
 use std::{
-    cmp,
     error::Error,
     future::Future,
     net::SocketAddr,
@@ -41,6 +40,50 @@ use tonic::{
 };
 use tracing::Span;
 
+/// Specifies observer/subject thresholds for the cut detector.
+#[derive(Copy, Clone, Debug)]
+pub struct CutDetectorConfig {
+    /// Threshold of reports required to place a subject into unstable report mode.
+    ///
+    /// Must be non-zero, and less than or equal to `stable_threshold`.
+    ///
+    /// Defaults to 4.
+    pub unstable_threshold: usize,
+
+    /// Threshold of reports required to place a subject into stable report mode.
+    ///
+    /// Must be non-zero, and less than or equal to `subjects_per_observer`.
+    ///
+    /// Defaults to 9.
+    pub stable_threshold: usize,
+
+    /// Set the number of subjects for each observer.
+    ///
+    /// Must be non-zero.
+    ///
+    /// Defaults to 10.
+    pub subjects_per_observer: usize,
+}
+
+impl Default for CutDetectorConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CutDetectorConfig {
+    /// Returns the default configuration.
+    pub const fn new() -> Self {
+        Self {
+            unstable_threshold: 4,
+            stable_threshold: 9,
+            subjects_per_observer: 10,
+        }
+    }
+
+    // TODO: add some sensible default configs for different scenarios
+}
+
 /// An unstarted member of a blip mesh network.
 ///
 /// This is a wrapper over the grpc server/router in [tonic::transport], and provides a
@@ -56,11 +99,13 @@ pub struct Mesh<St, R> {
 
 impl Default for Mesh<Rejoin, Server> {
     fn default() -> Self {
+        let cd = CutDetectorConfig::new();
+
         Self {
             cfg: Config {
                 strategy: Default::default(),
-                lh: (4, 9),
-                k: 10,
+                lh: (cd.unstable_threshold, cd.stable_threshold),
+                k: cd.subjects_per_observer,
                 seed: None,
                 meta: Default::default(),
                 server_tls: false,
@@ -81,33 +126,20 @@ impl Mesh<Rejoin, Server> {
 
 /// Methods for blip-specific membership protocol configuration.
 impl<St, R> Mesh<St, R> {
-    /// Set a threshold of reports required to place a member into unstable report mode.
+    /// Configure the cut detector.
     ///
-    /// Defaults to 4.
-    // TODO(doc): document invariants
-    // TODO(cfg): enforce invariants
-    pub fn unstable_threshold(mut self, l: usize) -> Self {
-        self.cfg.lh.0 = cmp::max(1, l);
-        self
-    }
+    /// # Panics
+    /// Panics if any invariants (listed at [CutDetectorConfig]) are not upheld.
+    pub fn cd_config(mut self, cfg: CutDetectorConfig) -> Self {
+        assert_ne!(0, cfg.unstable_threshold);
+        assert_ne!(0, cfg.stable_threshold);
+        assert_ne!(0, cfg.subjects_per_observer);
+        assert!(cfg.unstable_threshold <= cfg.stable_threshold);
+        assert!(cfg.stable_threshold <= cfg.subjects_per_observer);
 
-    /// Set a threshold of reports required to place a member into stable report mode.
-    ///
-    /// Defaults to 9.
-    // TODO(doc): document invariants
-    // TODO(cfg): enforce invariants
-    pub fn stable_threshold(mut self, h: usize) -> Self {
-        self.cfg.lh.1 = cmp::max(1, h);
-        self
-    }
-
-    /// Set the number of subjects for each observer.
-    ///
-    /// Defaults to 10.
-    // TODO(doc): document invariants
-    // TODO(cfg): enforce invariants
-    pub fn subjects_per_observer(mut self, k: usize) -> Self {
-        self.cfg.k = cmp::max(1, k);
+        self.cfg.lh.0 = cfg.unstable_threshold;
+        self.cfg.lh.1 = cfg.stable_threshold;
+        self.cfg.k = cfg.subjects_per_observer;
         self
     }
 
