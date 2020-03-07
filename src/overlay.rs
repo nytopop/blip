@@ -287,6 +287,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     ///
     /// Resolves once the mesh has exited.
     #[cfg(feature = "simulation")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
     pub async fn serve_simulated(self, net: Network, addr: SocketAddr) -> Fallible<()> {
         self.serve_simulated_shutdown(net, addr, pending()).await
     }
@@ -297,6 +298,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     ///
     /// Resolves once the mesh has exited.
     #[cfg(feature = "simulation")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
     pub async fn serve_simulated_shutdown<F>(
         mut self,
         net: Network,
@@ -407,11 +409,13 @@ where
     }
 
     #[cfg(feature = "simulation")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
     pub async fn serve_simulated(self, net: Network, addr: SocketAddr) -> Fallible<()> {
         self.serve_simulated_shutdown(net, addr, pending()).await
     }
 
     #[cfg(feature = "simulation")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
     pub async fn serve_simulated_shutdown<F>(
         self,
         net: Network,
