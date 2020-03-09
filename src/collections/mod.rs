@@ -11,5 +11,3 @@ mod tumbler;
 pub use event::{Filter as EventFilter, Id as EventId};
 pub use freqset::FreqSet;
 pub use tumbler::Tumbler;
-
-pub trait Navigable<T> = DoubleEndedIterator<Item = T>;

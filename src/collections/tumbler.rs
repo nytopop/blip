@@ -4,7 +4,6 @@
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
-use super::Navigable;
 use fnv::FnvBuildHasher;
 use std::{
     collections::{btree_set::IntoIter, BTreeSet},
@@ -121,15 +120,20 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         self.len() == 0
     }
 
-    pub fn iter(&self) -> impl Navigable<&T> {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &T> {
         self.ring(0)
     }
 
-    fn ring(&self, idx: usize) -> impl Navigable<&T> {
+    fn ring(&self, idx: usize) -> impl DoubleEndedIterator<Item = &T> {
         self.rings[idx].iter().map(|(_, v)| v)
     }
 
-    fn range<R: RangeBounds<T>>(&self, idx: usize, range: R) -> impl Navigable<&T> {
+    fn range<R: RangeBounds<T>>(
+        &self,
+        idx: usize,
+        range: R,
+    ) -> impl DoubleEndedIterator<Item = &T>
+    {
         // NOTE(safety): should be safe because we prevent side-effects
         let convert = |t: &T| unsafe {
             let h = self.hash(idx, t);
@@ -218,7 +222,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
     /// //
     /// // [4, 5, 0, 4]
     /// ```
-    pub fn predecessors<'a>(&'a self, e: &'a T) -> impl Navigable<&T> {
+    pub fn predecessors<'a>(&'a self, e: &'a T) -> impl DoubleEndedIterator<Item = &T> {
         (0..self.size()).flat_map(move |k| {
             self.range(k, ..e)
                 .next_back()
@@ -244,7 +248,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
     /// //
     /// // [1, 4, 4, 2]
     /// ```
-    pub fn successors<'a>(&'a self, e: &'a T) -> impl Navigable<&T> {
+    pub fn successors<'a>(&'a self, e: &'a T) -> impl DoubleEndedIterator<Item = &T> {
         (0..self.size()).flat_map(move |k| {
             self.range(k, (Bound::Excluded(e), Bound::Unbounded))
                 .next()

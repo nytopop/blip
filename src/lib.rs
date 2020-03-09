@@ -8,7 +8,7 @@
 //!
 //! # Feature Flags
 //! * `simulation`: Enables the simulation network for testing purposes.
-#![feature(trait_alias, entry_insert)]
+#![feature(entry_insert)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![doc(
     issue_tracker_base_url = "https://github.com/nytopop/blip/issues/",
