@@ -19,9 +19,41 @@
   </a>
 </p>
 
+A Rust framework for writing fast and highly resilient in-process gRPC service meshes.
+
+# Status
+extremely alpha, you probably shouldn't use this
+
+# Overview
+`blip` provides an implementation of distributed membership based on [rapid][rapid], exposed
+as a gRPC service. Groups of servers become aware of each other through the membership
+protocol, and any given member may expose its own metadata or linked services through
+the same backing gRPC server.
+
+In essence, this crate provides a membership list with strong consistency semantics
+(as opposed to weakly consistent protocols like [SWIM][SWIM]), distributed fault detection,
+and grpc routing.
+
+# Service Discovery
+`blip` is designed to build heterogenous meshes. As such, members may expose arbitrary
+(immutable) key-value metadata when they join a mesh, which can be used for the purpose
+of service discovery.
+
+# Sharding and State
+`blip` does not enforce any invariants with regard to state held by members of a mesh.
+For maximal flexibility, state and sharding are deferred to implementations of member
+services.
+
+# Feature Flags
+* `simulation`: Enables the simulation network for testing purposes.
+
 # References
-* [Stable and Consistent Membership at Scale with Rapid](https://arxiv.org/abs/1803.03620)
-* [Fast Paxos](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf)
+* [Stable and Consistent Membership at Scale with Rapid][rapid]
+* [Fast Paxos][fpx]
+
+[rapid]: https://arxiv.org/abs/1803.03620
+[fpx]: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
+[SWIM]: https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf
 
 # License
 Licensed under either of

@@ -4,12 +4,14 @@
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
-//! Implementation of the [rapid] distributed membership protocol.
+//! A distributed membership protocol based closely on [rapid].
 //!
 //! # References
 //! * [Stable and Consistent Membership at Scale with Rapid][rapid]
+//! * [Fast Paxos][fpx]
 //!
 //! [rapid]: https://arxiv.org/abs/1803.03620
+//! [fpx]: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
 pub mod cut;
 pub mod partition;
 mod proto;
