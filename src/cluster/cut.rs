@@ -163,7 +163,7 @@ impl Member {
     }
 
     /// Returns a reference to the tls configuration that will be used for outgoing conns
-    /// to this member, and `None` if it isn't expecting tls.
+    /// to this member, or `None` if it isn't expecting tls.
     pub fn tls_config(&self) -> Option<&ClientTlsConfig> {
         self.tls.as_ref().map(|tls| &**tls)
     }

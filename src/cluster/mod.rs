@@ -98,8 +98,8 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         let PreJoinReq { sender, uuid } = req.into_inner();
         let state = self.state.read().await;
 
-        if !state.nodes.contains(&sender) && state.uuids.contains(&uuid) {
-            return Err(Status::already_exists("uuid already exists"));
+        if !state.nodes.contains(&sender) {
+            state.verify_unused_uuid(&uuid)?;
         }
 
         let resp = PreJoinResp {

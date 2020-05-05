@@ -51,7 +51,6 @@ impl<T> RangeBounds<(u64, T)> for UnsafeBounds<T> {
 /// // [ 1, 0, 3, 4, 5, 2 ] ring: 2
 /// // [ 3, 2, 5, 0, 1, 4 ] ring: 3
 /// ```
-// TODO: we can store Rc<T> to avoid the clone bound and cloning costs.
 pub struct Tumbler<T, S = FnvBuildHasher> {
     hasher: S,
     rings: Vec<BTreeSet<(u64, T)>>,
