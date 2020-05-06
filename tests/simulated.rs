@@ -8,10 +8,7 @@
 
 use async_ctx::Context;
 use blip::{simulation::Network, Mesh, MeshService, MultiNodeCut, Subscription};
-use std::{
-    net::{SocketAddr, ToSocketAddrs},
-    num::NonZeroU8,
-};
+use std::net::{SocketAddr, ToSocketAddrs};
 use tokio::{
     task,
     time::{timeout, Duration},
@@ -48,43 +45,33 @@ async fn single_node_can_bootstrap() {
     timeout(JIFFY, fut).await.unwrap().unwrap()
 }
 
-fn linear(src: u8, ctl: u8, lo: f64, hi: f64) -> usize {
-    let src = src as f64;
-    let ctl = ctl as f64;
-
-    let min = lo * src;
-    let range = (hi * src) - min;
-    let step = range / 255.0;
-
-    (min + (ctl * step)).round() as usize
-}
-
-const PER_MEMBER: Duration = Duration::from_millis(250);
+const PER_MEMBER: Duration = Duration::from_millis(400);
 
 // TODO: assert that each node ends up with the same config
-#[quickcheck_async::tokio(core_threads = 16, max_threads = 16)]
-async fn join_protocol(group_size: NonZeroU8) {
-    // TODO: to prevent duplicate tests, use constrained type that implements Arbitrary
-    let group_size = linear(100, group_size.get(), 0.01, 0.05);
-
+async fn join_protocol_with(group_size: usize) {
     let net = Network::default();
 
     let ctx = Context::default();
     let ctxa = ctx.child();
     let fina = timeout(PER_MEMBER * group_size as u32, ctxa.clone());
     let ctxb = ctx.child();
-    let finb = timeout(PER_MEMBER * group_size as u32, ctxb.clone());
+    let _ctxb = ctxb.clone();
 
     let mut addrs = (1u16..).map(|port| addr(("1.1.1.1", port)));
     let seed = addrs.next().unwrap();
 
     let mut handles = vec![];
     let fut = Mesh::default()
-        .add_mesh_service(Svc(move |cut: MultiNodeCut| match cut.members().len() {
-            1 => {}
-            n if n == 1 + group_size => ctxa.complete(),
-            n if n == 1 + (group_size * 2) => ctxb.complete(),
-            n => panic!("cut is {}, but group_size is {}", n, group_size),
+        .add_mesh_service(Svc(move |cut: MultiNodeCut| {
+            if cut.skipped() != 0 {
+                panic!("skipped {}", cut.skipped());
+            }
+
+            match cut.members().len() {
+                n if n == 1 + group_size => ctxa.complete(),
+                n if n == 1 + (group_size * 2) => ctxb.complete(),
+                _ => {}
+            }
         }))
         .serve_simulated_shutdown(net.clone(), seed, ctx.clone());
     handles.push(task::spawn(fut));
@@ -96,9 +83,13 @@ async fn join_protocol(group_size: NonZeroU8) {
 
         handles.push(task::spawn(fut));
     }
+    assert!(
+        fina.await.is_ok(),
+        "first group timed out, size: {}",
+        group_size
+    );
 
-    fina.await.unwrap();
-
+    let finb = timeout(PER_MEMBER * group_size as u32, _ctxb);
     for addr in (&mut addrs).take(group_size) {
         let fut = Mesh::default()
             .join_seed(seed, false)
@@ -110,5 +101,12 @@ async fn join_protocol(group_size: NonZeroU8) {
     let r = finb.await;
     ctx.complete();
     futures::future::join_all(handles).await;
-    r.unwrap();
+    assert!(r.is_ok(), "second group timed out, size: {}", group_size);
+}
+
+#[tokio::test(core_threads = 16)]
+async fn join_protocol() {
+    for n in 1..16 {
+        join_protocol_with(n).await;
+    }
 }
