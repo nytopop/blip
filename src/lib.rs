@@ -65,7 +65,7 @@ pub use cluster::{
 #[doc(inline)]
 pub use overlay::{Mesh, MeshService};
 
-/// A re-export of [async_trait][async_trait::async_trait] for convenience.
+/// A re-export of [async_trait] for convenience.
 ///
 /// [async_trait]: https://docs.rs/async-trait/latest/async_trait/attr.async_trait.html
 #[doc(inline)]
