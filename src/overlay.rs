@@ -13,17 +13,10 @@ use super::cluster::{
 
 use failure::Fallible;
 use futures::{
-    future::{pending, FutureExt, TryFutureExt},
+    future::{pending, BoxFuture, FutureExt, TryFutureExt},
     stream::{FuturesUnordered, StreamExt},
 };
-use std::{
-    error::Error,
-    future::Future,
-    net::SocketAddr,
-    sync::Arc,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::{error::Error, future::Future, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::select;
 use tonic::{
     body::BoxBody,
@@ -178,7 +171,7 @@ impl<St, R> Mesh<St, R> {
         Mesh { cfg, grpc, svcs }
     }
 
-    /// Add a [MeshService] that doesn't necessarily implement [Service].
+    /// Add a [MeshService] that doesn't necessarily implement [IntoService].
     ///
     /// This can be used to receive membership updates without exposing a grpc service to
     /// other mesh members.
@@ -263,20 +256,16 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// Add a service `S` to the mesh. Any endpoints it exposes should use request paths
     /// namespaced by the [NamedService] implementation, so they can be routed alongside
     /// other services.
-    pub fn add_service<S>(self, svc: S) -> Mesh<St, Router<S, Unimplemented>>
+    pub fn add_service<S>(self, svc: S) -> Mesh<St, Router<S::Service, Unimplemented>>
     where
-        S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
-            + NamedService
-            + MeshService
-            + Clone
-            + Send
-            + 'static,
-        S::Future: Send + 'static,
-        S::Error: Into<Box<dyn Error + Send + Sync>> + Send,
+        S: IntoService + 'static,
+        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
+        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Error:
+            Into<Box<dyn Error + Send + Sync>> + Send,
     {
         #[rustfmt::skip]
         let Mesh { cfg, mut grpc, svcs } = self.add_mesh_service(svc.clone());
-        let grpc = grpc.add_service(svc);
+        let grpc = grpc.add_service(svc.into_service());
 
         Mesh { cfg, grpc, svcs }
     }
@@ -329,19 +318,18 @@ where
     B::Future: Send + 'static,
     B::Error: Into<Box<dyn Error + Send + Sync>> + Send,
 {
-    pub fn add_service<S>(self, svc: S) -> Mesh<St, Router<S, impl Service<HttpRequest<Body>>>>
+    pub fn add_service<S>(
+        self,
+        svc: S,
+    ) -> Mesh<St, Router<S::Service, impl Service<HttpRequest<Body>>>>
     where
-        S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
-            + NamedService
-            + MeshService
-            + Clone
-            + Send
-            + 'static,
-        S::Future: Send + 'static,
-        S::Error: Into<Box<dyn Error + Send + Sync>> + Send,
+        S: IntoService + 'static,
+        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
+        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Error:
+            Into<Box<dyn Error + Send + Sync>> + Send,
     {
         let Mesh { cfg, grpc, svcs } = self.add_mesh_service(svc.clone());
-        let grpc = grpc.add_service(svc);
+        let grpc = grpc.add_service(svc.into_service());
 
         Mesh { cfg, grpc, svcs }
     }
@@ -374,7 +362,8 @@ where
     }
 }
 
-/// A wrapper around an arbitrary [Service] that will implement [MeshService] for free.
+/// A wrapper around an arbitrary [Service] that will implement [IntoService] with an empty
+/// [MeshService] implementation.
 ///
 /// This can be used to serve a service that isn't mesh-aware.
 #[derive(Copy, Clone, Debug)]
@@ -382,34 +371,41 @@ pub struct GrpcService<S> {
     svc: S,
 }
 
-impl<S: Service<HttpRequest<Body>>> GrpcService<S> {
+impl<S> GrpcService<S>
+where
+    S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
+        + NamedService
+        + Clone
+        + Send
+        + 'static,
+    S::Future: Send + 'static,
+    S::Error: Into<Box<dyn Error + Send + Sync>> + Send,
+{
     /// Wrap a type that implements [Service].
     pub fn new(svc: S) -> Self {
         Self { svc }
     }
 }
 
-impl<S: NamedService> NamedService for GrpcService<S> {
-    const NAME: &'static str = S::NAME;
-}
-
-impl<Request, S: Service<Request>> Service<Request> for GrpcService<S> {
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.svc.poll_ready(ctx)
-    }
-
-    fn call(&mut self, req: Request) -> Self::Future {
-        self.svc.call(req)
-    }
-}
-
 #[crate::async_trait]
 impl<S: Send> MeshService for GrpcService<S> {
+    #[inline]
     async fn accept(self, _: Subscription) {}
+}
+
+impl<S> IntoService for GrpcService<S>
+where S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
+        + NamedService
+        + Clone
+        + Send
+        + 'static
+{
+    type Service = S;
+
+    #[inline]
+    fn into_service(self) -> Self::Service {
+        self.svc
+    }
 }
 
 /// A trait that allows individual services access to any accepted membership view-change
@@ -456,16 +452,27 @@ pub trait MeshService: Send {
     async fn accept(self, cuts: Subscription);
 }
 
-/// An adjacent trait to [MeshService]; this should only be implemented by the blanket
-/// impl below. It exists for its ability to be made into a trait object.
-#[crate::async_trait]
+/// An object-safe version of [MeshService].
 trait MeshInner: Send {
-    async fn accept(self: Box<Self>, cuts: Subscription);
+    fn accept(self: Box<Self>, cuts: Subscription) -> BoxFuture<'static, ()>;
 }
 
-#[crate::async_trait]
 impl<S: MeshService + 'static> MeshInner for S {
-    async fn accept(self: Box<Self>, cuts: Subscription) {
-        (*self).accept(cuts).await
+    #[inline]
+    fn accept(self: Box<Self>, cuts: Subscription) -> BoxFuture<'static, ()> {
+        (*self).accept(cuts)
     }
+}
+
+/// A trait for [MeshService]s that can be converted into a [Service] to be served over grpc.
+pub trait IntoService: MeshService + Clone {
+    /// The service implementation.
+    type Service: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
+        + NamedService
+        + Clone
+        + Send
+        + 'static;
+
+    /// Convert self into a [Service].
+    fn into_service(self) -> Self::Service;
 }
