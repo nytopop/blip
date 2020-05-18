@@ -13,7 +13,7 @@ use super::cluster::{
 
 use failure::Fallible;
 use futures::{
-    future::{pending, BoxFuture, FutureExt, TryFutureExt},
+    future::{pending, FutureExt, TryFutureExt},
     stream::{FuturesUnordered, StreamExt},
 };
 use std::{error::Error, future::Future, net::SocketAddr, sync::Arc, time::Duration};
@@ -85,7 +85,7 @@ impl CutDetectorConfig {
 pub struct Mesh<St, R> {
     cfg: Config<St>,
     grpc: R,
-    svcs: Vec<Box<dyn MeshInner>>,
+    svcs: Vec<Box<dyn MeshService>>,
 }
 
 impl Default for Mesh<Rejoin, Server> {
@@ -171,12 +171,11 @@ impl<St, R> Mesh<St, R> {
         Mesh { cfg, grpc, svcs }
     }
 
-    /// Add a [MeshService] that doesn't necessarily implement [IntoService].
+    /// Add a [MeshService] that doesn't necessarily implement [ExposedService].
     ///
     /// This can be used to receive membership updates without exposing a grpc service to
     /// other mesh members.
     pub fn add_mesh_service<S: MeshService + 'static>(mut self, svc: S) -> Self {
-        svc.add_metadata(&mut *self.cfg.meta);
         self.svcs.push(Box::new(svc));
         self
     }
@@ -258,13 +257,14 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// other services.
     pub fn add_service<S>(self, svc: S) -> Mesh<St, Router<S::Service, Unimplemented>>
     where
-        S: IntoService + 'static,
-        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
-        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Error:
+        S: ExposedService + 'static,
+        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
+        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Error:
             Into<Box<dyn Error + Send + Sync>> + Send,
     {
         #[rustfmt::skip]
-        let Mesh { cfg, mut grpc, svcs } = self.add_mesh_service(svc.clone());
+        let Mesh { mut cfg, mut grpc, svcs } = self.add_mesh_service(svc.clone());
+        svc.add_metadata(&mut *cfg.meta);
         let grpc = grpc.add_service(svc.into_service());
 
         Mesh { cfg, grpc, svcs }
@@ -323,12 +323,14 @@ where
         svc: S,
     ) -> Mesh<St, Router<S::Service, impl Service<HttpRequest<Body>>>>
     where
-        S: IntoService + 'static,
-        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
-        <<S as IntoService>::Service as Service<HttpRequest<Body>>>::Error:
+        S: ExposedService + 'static,
+        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
+        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Error:
             Into<Box<dyn Error + Send + Sync>> + Send,
     {
-        let Mesh { cfg, grpc, svcs } = self.add_mesh_service(svc.clone());
+        #[rustfmt::skip]
+        let Mesh { mut cfg, grpc, svcs } = self.add_mesh_service(svc.clone());
+        svc.add_metadata(&mut *cfg.meta);
         let grpc = grpc.add_service(svc.into_service());
 
         Mesh { cfg, grpc, svcs }
@@ -362,7 +364,7 @@ where
     }
 }
 
-/// A wrapper around an arbitrary [Service] that will implement [IntoService] with an empty
+/// A wrapper around an arbitrary [Service] that will implement [ExposedService] with an empty
 /// [MeshService] implementation.
 ///
 /// This can be used to serve a service that isn't mesh-aware.
@@ -390,10 +392,10 @@ where
 #[crate::async_trait]
 impl<S: Send> MeshService for GrpcService<S> {
     #[inline]
-    async fn accept(self, _: Subscription) {}
+    async fn accept(self: Box<Self>, _: Subscription) {}
 }
 
-impl<S> IntoService for GrpcService<S>
+impl<S> ExposedService for GrpcService<S>
 where S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
         + NamedService
         + Clone
@@ -419,11 +421,7 @@ where S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
 ///
 /// #[blip::async_trait]
 /// impl MeshService for MySvc {
-///     fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, keys: &mut K) {
-///         keys.extend(vec![("key".to_owned(), b"value".to_vec())]);
-///     }
-///
-///     async fn accept(self, mut cuts: Subscription) {
+///     async fn accept(self: Box<Self>, mut cuts: Subscription) {
 ///         while let Ok(cut) = cuts.recv().await {
 ///             // handle membership change
 ///             let _ = cut.members();
@@ -435,9 +433,6 @@ where S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
 /// ```
 #[crate::async_trait]
 pub trait MeshService: Send {
-    /// Add service-specific metadata to distribute to other members of the mesh.
-    fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, _keys: &mut K) {}
-
     /// Receive accepted view-change proposals.
     ///
     /// This method is called once for every [MeshService] added to a [Mesh], and will be
@@ -449,23 +444,14 @@ pub trait MeshService: Send {
     ///
     /// If the mesh exits (for any reason), this future will be dropped if it has not yet
     /// resolved (which may occur at any yield point).
-    async fn accept(self, cuts: Subscription);
-}
-
-/// An object-safe version of [MeshService].
-trait MeshInner: Send {
-    fn accept(self: Box<Self>, cuts: Subscription) -> BoxFuture<'static, ()>;
-}
-
-impl<S: MeshService + 'static> MeshInner for S {
-    #[inline]
-    fn accept(self: Box<Self>, cuts: Subscription) -> BoxFuture<'static, ()> {
-        (*self).accept(cuts)
-    }
+    async fn accept(self: Box<Self>, cuts: Subscription);
 }
 
 /// A trait for [MeshService]s that can be converted into a [Service] to be served over grpc.
-pub trait IntoService: MeshService + Clone {
+pub trait ExposedService: MeshService + Clone {
+    /// Add metadata to distribute to other members of the mesh.
+    fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, _keys: &mut K) {}
+
     /// The service implementation.
     type Service: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
         + NamedService

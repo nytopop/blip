@@ -63,7 +63,7 @@ pub use cluster::{
     partition::Rejoin,
 };
 #[doc(inline)]
-pub use overlay::{IntoService, Mesh, MeshService};
+pub use overlay::{ExposedService, Mesh, MeshService};
 
 /// A re-export of [async_trait] for convenience.
 ///

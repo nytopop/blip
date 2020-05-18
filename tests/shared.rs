@@ -47,7 +47,7 @@ pub struct CfgService {
 
 #[blip::async_trait]
 impl MeshService for CfgService {
-    async fn accept(mut self, mut cuts: Subscription) {
+    async fn accept(mut self: Box<Self>, mut cuts: Subscription) {
         while let Ok(cut) = cuts.recv().await {
             self.tx.send(cut).await.unwrap();
         }
