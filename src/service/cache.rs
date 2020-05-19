@@ -90,6 +90,7 @@ where F: 'static + Sync + Send + Fn(&[u8]) -> Vec<u8>
 /// # Ok(())
 /// # }
 /// ```
+///
 /// [Mesh]: crate::Mesh
 pub struct Cache<S: ?Sized = dyn Source>(Arc<Inner<S>>);
 
@@ -306,10 +307,10 @@ impl Cache {
         Ok(buf)
     }
 
-    /// Lookup the shard that is authoritative over `key`. If this returns `None`, it belongs
-    /// to the local node.
+    /// Lookup the shard that is authoritative over `key`. If this returns `None`, `key`
+    /// belongs to the local node.
     ///
-    /// The use of a consistent hash ring allows key distribution to remain relatively stable
+    /// The use of a consistent hash ring means key distribution remains relatively stable
     /// in the event of cluster membership changes.
     #[inline]
     async fn lookup_shard(&self, key: &[u8]) -> Option<Endpoint> {
@@ -346,6 +347,8 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    /// Tests to make sure that values returned from a call to [Cache::get] are actually
+    /// cached on subsequent calls.
     #[quickcheck_async::tokio]
     async fn values_are_cached(keys: HashSet<Vec<u8>>) {
         if keys.is_empty() {
