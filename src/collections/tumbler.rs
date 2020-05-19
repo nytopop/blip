@@ -41,16 +41,17 @@ impl<T> RangeBounds<(u64, T)> for UnsafeBounds<T> {
 /// A tumbled hash set. It can be thought of as an ordered set with k unique rings of all
 /// contained items, in which adjacent edges form an [expander graph][expander].
 ///
+/// ```text
+/// [ 0, 1, 2, 3, 4, 5 ] k: 4
+///  |                |
+///  v                v
+/// [ 0, 4, 3, 1, 2, 5 ] ring: 0
+/// [ 4, 0, 2, 1, 5, 3 ] ring: 1
+/// [ 1, 0, 3, 4, 5, 2 ] ring: 2
+/// [ 3, 2, 5, 0, 1, 4 ] ring: 3
+/// ```
+///
 /// [expander]: https://en.wikipedia.org/wiki/Expander_graph
-/// ```
-/// // [ 0, 1, 2, 3, 4, 5 ] k: 4
-/// //  |                |
-/// //  v                v
-/// // [ 0, 4, 3, 1, 2, 5 ] ring: 0
-/// // [ 4, 0, 2, 1, 5, 3 ] ring: 1
-/// // [ 1, 0, 3, 4, 5, 2 ] ring: 2
-/// // [ 3, 2, 5, 0, 1, 4 ] ring: 3
-/// ```
 pub struct Tumbler<T, S = FnvBuildHasher> {
     hasher: S,
     rings: Vec<BTreeSet<(u64, T)>>,
@@ -205,21 +206,21 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
 
     /// Returns an iterator over every leading edge of `e`, across all rings.
     ///
-    /// ```
-    /// // where e: 3
-    /// //            |
-    /// //       [ 0, 4, 3, 1, 2, 5 ]    ring: 0
-    /// // [ 0, 2, 1, 5, 3, 4 ]          ring: 1
-    /// //       [ 1, 0, 3, 4, 5, 2 ]    ring: 2
-    /// //          [ 4, 3, 2, 5, 0, 1 ] ring: 3
-    /// //            |
-    /// //
-    /// // (4, 3) -> 4
-    /// // (5, 3) -> 5
-    /// // (0, 3) -> 0
-    /// // (4, 3) -> 4
-    /// //
-    /// // [4, 5, 0, 4]
+    /// ```text
+    /// where e: 3
+    ///            |
+    ///       [ 0, 4, 3, 1, 2, 5 ]    ring: 0
+    /// [ 0, 2, 1, 5, 3, 4 ]          ring: 1
+    ///       [ 1, 0, 3, 4, 5, 2 ]    ring: 2
+    ///          [ 4, 3, 2, 5, 0, 1 ] ring: 3
+    ///            |
+    ///
+    /// (4, 3) -> 4
+    /// (5, 3) -> 5
+    /// (0, 3) -> 0
+    /// (4, 3) -> 4
+    ///
+    /// [4, 5, 0, 4]
     /// ```
     pub fn predecessors<'a>(&'a self, e: &'a T) -> impl DoubleEndedIterator<Item = &T> {
         (0..self.size()).flat_map(move |k| {
@@ -231,21 +232,21 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
 
     /// Returns an iterator over every trailing edge of `e`, across all rings.
     ///
-    /// ```
-    /// // where e: 3
-    /// //                  |
-    /// //       [ 0, 4, 3, 1, 2, 5 ]    ring: 0
-    /// // [ 0, 2, 1, 5, 3, 4 ]          ring: 1
-    /// //       [ 1, 0, 3, 4, 5, 2 ]    ring: 2
-    /// //          [ 4, 3, 2, 5, 0, 1 ] ring: 3
-    /// //                  |
-    /// //
-    /// // (3, 1) -> 1
-    /// // (3, 4) -> 4
-    /// // (3, 4) -> 4
-    /// // (3, 2) -> 2
-    /// //
-    /// // [1, 4, 4, 2]
+    /// ```text
+    /// where e: 3
+    ///                  |
+    ///       [ 0, 4, 3, 1, 2, 5 ]    ring: 0
+    /// [ 0, 2, 1, 5, 3, 4 ]          ring: 1
+    ///       [ 1, 0, 3, 4, 5, 2 ]    ring: 2
+    ///          [ 4, 3, 2, 5, 0, 1 ] ring: 3
+    ///                  |
+    ///
+    /// (3, 1) -> 1
+    /// (3, 4) -> 4
+    /// (3, 4) -> 4
+    /// (3, 2) -> 2
+    ///
+    /// [1, 4, 4, 2]
     /// ```
     pub fn successors<'a>(&'a self, e: &'a T) -> impl DoubleEndedIterator<Item = &T> {
         (0..self.size()).flat_map(move |k| {

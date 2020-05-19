@@ -92,7 +92,7 @@ pub struct Cluster<St> {
 impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     /// Handle a pre-join request (phase 1 of the join protocol).
     ///
-    /// The only thing we need to do to inform the joiner about which nodes to contact in
+    /// The only thing we need to do is inform the joiner about which nodes to contact in
     /// order to initiate phase 2 of the join protocol.
     async fn pre_join(&self, req: Request<PreJoinReq>) -> GrpcResponse<PreJoinResp> {
         let PreJoinReq { sender, uuid } = req.into_inner();

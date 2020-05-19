@@ -4,7 +4,7 @@
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
-//! A Rust framework for writing fast and highly resilient in-process gRPC service meshes.
+//! A crate for writing fast and highly resilient in-process gRPC service meshes.
 //!
 //! # Overview
 //! `blip` provides an implementation of distributed membership based on [rapid], exposed

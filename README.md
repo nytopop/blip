@@ -19,7 +19,7 @@
   </a>
 </p>
 
-A Rust framework for writing fast and highly resilient in-process gRPC service meshes.
+A crate for writing fast and highly resilient in-process gRPC service meshes.
 
 # Status
 extremely alpha, you probably shouldn't use this

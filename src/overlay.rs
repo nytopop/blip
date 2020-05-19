@@ -206,7 +206,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
         self
     }
 
-    /// Set a timeout on for all request handlers.
+    /// Set a timeout for all request handlers.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.grpc.timeout(timeout);
         self
@@ -529,6 +529,7 @@ impl<S: Send> MeshService for GrpcService<S> {
 /// A trait that allows individual services access to any accepted membership view-change
 /// proposals.
 ///
+/// # Examples
 /// ```
 /// use blip::{MeshService, Subscription};
 ///

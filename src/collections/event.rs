@@ -80,8 +80,8 @@ impl Id {
 
 /// A filter for ignoring duplicate or expired instances of asynchronous events.
 ///
-/// The expiration mechanism serves to avoid the filter from infinitely increasing in
-/// size as events are added. After sufficient time, events are purged.
+/// The expiration mechanism serves to prevent the filter from infinitely increasing in size
+/// as events are added. After a configurable amount of time, events are purged.
 pub struct Filter {
     events: BTreeSet<Id>,
     oldest: u64,
