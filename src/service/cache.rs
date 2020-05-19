@@ -40,6 +40,7 @@ use once_cell::sync::OnceCell;
 use proto::{cache_client::CacheClient, cache_server::CacheServer, Key, Value};
 use rand::{thread_rng, Rng};
 use std::{
+    cmp,
     collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
     sync::Arc,
@@ -177,6 +178,9 @@ impl Cache {
     /// Create a new cache from a [Source]. At most `max_keys + (max_keys / 8)` keys will be
     /// cached locally at any point in time.
     ///
+    /// # Panics
+    /// Panics if `max_keys == 0`.
+    ///
     /// # Examples
     /// ```
     /// use blip::service::{cache::Source, Cache};
@@ -200,11 +204,13 @@ impl Cache {
             shards: Ring::default(),
         };
 
+        let max_hot = cmp::max(1, max_keys / 8);
+
         let inner = Inner {
             inflight: HashMap::new().into(),
             remote: remote.into(),
             local_keys: Cache2q::new(max_keys).into(),
-            hot_keys: Cache2q::new(max_keys / 8).into(),
+            hot_keys: Cache2q::new(max_hot).into(),
             source,
         };
 
@@ -214,6 +220,10 @@ impl Cache {
     /// Create a new cache from a source `Fn`. At most `max_keys + (max_keys / 8)` keys will
     /// be cached locally at any point in time.
     ///
+    /// # Panics
+    /// Panics if `max_keys == 0`.
+    ///
+    /// # Examples
     /// ```
     /// use blip::service::Cache;
     ///
@@ -329,4 +339,34 @@ async fn load(cache: &Mutex<Cache2q<Bytes, Bytes>>, key: &[u8]) -> Option<Bytes>
 #[inline]
 async fn store(cache: &Mutex<Cache2q<Bytes, Bytes>>, key: Bytes, buf: Bytes) {
     cache.lock().await.insert(key, buf);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[quickcheck_async::tokio]
+    async fn values_are_cached(keys: HashSet<Vec<u8>>) {
+        if keys.is_empty() {
+            return;
+        }
+
+        struct Src(Mutex<HashSet<Vec<u8>>>);
+
+        #[crate::async_trait]
+        impl Source for Src {
+            async fn get(&self, key: &[u8]) -> Result<Vec<u8>, Status> {
+                let mut seen = self.0.lock().await;
+                assert!(seen.insert(key.to_vec()), "key was fetched twice :(");
+                Ok(key.to_vec())
+            }
+        }
+
+        let cache = Cache::new(keys.len(), Src(Mutex::default()));
+
+        for key in keys.into_iter() {
+            assert_eq!(key, cache.get(key.clone()).await.unwrap());
+        }
+    }
 }
