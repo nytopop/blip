@@ -4,11 +4,13 @@
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
-use std::io;
+//! Ready-to-use mesh-aware services.
 
-fn main() -> io::Result<()> {
-    tonic_build::compile_protos("proto/blip.proto")?;
-    tonic_build::compile_protos("proto/cache.proto")?;
+#[cfg(feature = "cache")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cache")))]
+pub mod cache;
 
-    Ok(())
-}
+#[cfg(feature = "cache")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cache")))]
+#[doc(inline)]
+pub use cache::Cache;

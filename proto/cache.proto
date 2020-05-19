@@ -4,11 +4,24 @@
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
-use std::io;
+syntax = "proto2";
 
-fn main() -> io::Result<()> {
-    tonic_build::compile_protos("proto/blip.proto")?;
-    tonic_build::compile_protos("proto/cache.proto")?;
+package cache;
 
-    Ok(())
+// A cache.
+service Cache {
+	// Get the value associated with a key.
+	rpc Get(Key) returns (Value);
+}
+
+// A string key.
+message Key {
+	// The key.
+	required bytes key = 1;
+}
+
+// A binary value.
+message Value {
+	// The value.
+	required bytes buf = 1;
 }

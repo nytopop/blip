@@ -26,6 +26,9 @@
 //! For maximal flexibility, state and sharding are deferred to implementations of member
 //! services.
 //!
+//! # Feature Flags
+//! * `cache`: Enables the [cache][service::cache] service.
+//!
 //! # References
 //! * [Stable and Consistent Membership at Scale with Rapid][rapid]
 //! * [Fast Paxos][fpx]
@@ -56,6 +59,7 @@ mod collections;
 
 pub mod cluster;
 pub mod overlay;
+pub mod service;
 
 #[doc(inline)]
 pub use cluster::{
