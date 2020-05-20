@@ -27,6 +27,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use tokio::select;
 use tonic::{
     body::BoxBody,
     codegen::{
@@ -322,7 +323,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        tokio::select! {
+        select! {
             r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
@@ -357,7 +358,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        tokio::select! {
+        select! {
             r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
@@ -429,7 +430,7 @@ where
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        tokio::select! {
+        select! {
             r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
@@ -456,7 +457,7 @@ where
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        tokio::select! {
+        select! {
             r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
