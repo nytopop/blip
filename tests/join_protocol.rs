@@ -8,34 +8,8 @@ mod shared;
 
 use blip::Mesh;
 use futures::future::{join, join3, FutureExt};
-use shared::cfg_handle;
-use std::{
-    net::SocketAddr,
-    sync::atomic::{AtomicU8, Ordering::Relaxed},
-};
+use shared::{addr_in, cfg_handle, subnet};
 use tokio::select;
-
-// A quick NOTE about addressing in tests
-//
-//      +----------- always 127
-//     /   +-------- unique per module
-//    /   /   +----- unique per test fn { subnet() }
-//   /   /   /   /-- unique per node
-//  v   v   v   v
-// 127 254 254 254 : 10000 (port always 10000)
-//
-// this lets us bind lots of sockets without encountering address collisions
-
-fn subnet() -> u8 {
-    static SUBNET: AtomicU8 = AtomicU8::new(1);
-    let s = SUBNET.fetch_add(1, Relaxed);
-    assert!(s != 255 && s != 0);
-    s
-}
-
-fn addr_in(subnet: u8, host: u8) -> SocketAddr {
-    ([127, 0, subnet, host], 10000).into()
-}
 
 /// Tests that a single node can bootstrap a configuration without any other nodes.
 #[tokio::test]
@@ -86,7 +60,7 @@ async fn three_node_cluster_bootstrap() {
 
 /// Tests that in the event a member of a three node configuration becomes partitioned from
 /// the others, it is ejected from the configuration. Once it comes back online, it should
-/// rejoin the mesh.
+/// rejoin the cluster.
 #[tokio::test]
 async fn three_node_cluster_partition_recovery() {
     let net = subnet();
@@ -123,7 +97,7 @@ async fn three_node_cluster_partition_recovery() {
         }
     }
 
-    // progress s1/s2 but not s3 and wait for ejection
+    // progress s1/s2 but not s3 and wait until it gets ejected
     select! {
         e = &mut s1 => panic!("s1 exited with: {:?}", e),
         e = &mut s2 => panic!("s2 exited with: {:?}", e),
@@ -133,7 +107,7 @@ async fn three_node_cluster_partition_recovery() {
         }
     }
 
-    // wait for cluster to re-converge
+    // wait for s3 to rejoin
     select! {
         e = &mut s1 => panic!("s1 exited with: {:?}", e),
         e = &mut s2 => panic!("s2 exited with: {:?}", e),
