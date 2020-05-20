@@ -50,13 +50,13 @@ impl Id {
         Self::new(unixtime(), random())
     }
 
-    /// Returns an event id that is always expired.
+    /// Returns an event id that is ~always expired.
     #[cfg(test)]
     const fn max_age(uniq: u64) -> Self {
         Self::new(u64::min_value(), uniq)
     }
 
-    /// Returns an event id that is never expired.
+    /// Returns an event id that is ~never expired.
     #[cfg(test)]
     const fn min_age(uniq: u64) -> Self {
         Self::new(u64::max_value(), uniq)
@@ -81,7 +81,7 @@ impl Id {
 /// A filter for ignoring duplicate or expired instances of asynchronous events.
 ///
 /// The expiration mechanism serves to prevent the filter from infinitely increasing in size
-/// as events are added. After a configurable amount of time, events are purged.
+/// as events are added; after a configurable amount of time, events are purged.
 pub struct Filter {
     events: BTreeSet<Id>,
     oldest: u64,
@@ -107,6 +107,7 @@ impl Filter {
         //    v-- newest                                      v-- oldest
         // [ (5, 3), (4, 1), (3, 5), (2, 3), (2, 2), (2, 1), (1, 8) ]
         //                          ^-- (2, u64::max)       ^-- (2, u64::min)
+        // |--------- kept ---------|----------- purged ------------|
         self.events.split_off(&Id::least_at(expires_at));
 
         if event.unix <= expires_at {
