@@ -26,9 +26,6 @@
 //! For maximal flexibility, state and sharding are deferred to implementations of member
 //! services.
 //!
-//! # Feature Flags
-//! * `simulation`: Enables the simulation network for testing purposes.
-//!
 //! # References
 //! * [Stable and Consistent Membership at Scale with Rapid][rapid]
 //! * [Fast Paxos][fpx]
@@ -59,9 +56,6 @@ mod collections;
 
 pub mod cluster;
 pub mod overlay;
-#[cfg(feature = "simulation")]
-#[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
-pub mod simulation;
 
 #[doc(inline)]
 pub use cluster::{

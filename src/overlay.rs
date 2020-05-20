@@ -5,9 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 //! Batteries-included grpc service mesh.
-#[cfg(feature = "simulation")]
-use crate::simulation::Network;
-
 use super::cluster::{
     cut::Subscription,
     partition::{self, Rejoin},
@@ -287,56 +284,6 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// Consume this [Mesh], creating a future that will run on a tokio executor.
     ///
     /// Resolves once the mesh has exited.
-    #[cfg(feature = "simulation")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
-    pub async fn serve_simulated(self, net: Network, addr: SocketAddr) -> Fallible<()> {
-        self.serve_simulated_shutdown(net, addr, pending()).await
-    }
-
-    /// Consume this [Mesh], creating a future that will run on a tokio executor.
-    ///
-    /// Shutdown will be initiated when `signal` resolves.
-    ///
-    /// Resolves once the mesh has exited.
-    #[cfg(feature = "simulation")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
-    pub async fn serve_simulated_shutdown<F>(
-        mut self,
-        net: Network,
-        addr: SocketAddr,
-        signal: F,
-    ) -> Fallible<()>
-    where
-        F: Future<Output = ()> + Send,
-    {
-        let conns = net.bind(addr).await?;
-
-        let mut cluster = Cluster::new(self.cfg, addr);
-        cluster.use_simulated_net(net);
-        let cluster = Arc::new(cluster);
-
-        let f_cuts = cluster.subscribe();
-        let w_cuts = cluster.subscribe();
-
-        let svcs: FuturesUnordered<_> = (self.svcs)
-            .into_iter()
-            .map(|s| s.accept(cluster.subscribe()))
-            .collect();
-
-        select! {
-            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
-            r = self.grpc
-                    .add_service(Arc::clone(&cluster).into_service())
-                    .serve_with_incoming_shutdown(conns, signal)
-                    .err_into() => r,
-            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
-            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
-        }
-    }
-
-    /// Consume this [Mesh], creating a future that will run on a tokio executor.
-    ///
-    /// Resolves once the mesh has exited.
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
         self.serve_with_shutdown(addr, pending()).await
     }
@@ -397,48 +344,6 @@ where
         let grpc = grpc.add_service(svc);
 
         Mesh { cfg, grpc, svcs }
-    }
-
-    #[cfg(feature = "simulation")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
-    pub async fn serve_simulated(self, net: Network, addr: SocketAddr) -> Fallible<()> {
-        self.serve_simulated_shutdown(net, addr, pending()).await
-    }
-
-    #[cfg(feature = "simulation")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "simulation")))]
-    pub async fn serve_simulated_shutdown<F>(
-        self,
-        net: Network,
-        addr: SocketAddr,
-        signal: F,
-    ) -> Fallible<()>
-    where
-        F: Future<Output = ()> + Send,
-    {
-        let conns = net.bind(addr).await?;
-
-        let mut cluster = Cluster::new(self.cfg, addr);
-        cluster.use_simulated_net(net);
-        let cluster = Arc::new(cluster);
-
-        let f_cuts = cluster.subscribe();
-        let w_cuts = cluster.subscribe();
-
-        let svcs: FuturesUnordered<_> = (self.svcs)
-            .into_iter()
-            .map(|s| s.accept(cluster.subscribe()))
-            .collect();
-
-        select! {
-            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
-            r = self.grpc
-                    .add_service(Arc::clone(&cluster).into_service())
-                    .serve_with_incoming_shutdown(conns, signal)
-                    .err_into() => r,
-            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
-            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
-        }
     }
 
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {

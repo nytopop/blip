@@ -44,9 +44,6 @@ of service discovery.
 For maximal flexibility, state and sharding are deferred to implementations of member
 services.
 
-# Feature Flags
-* `simulation`: Enables the simulation network for testing purposes.
-
 # References
 * [Stable and Consistent Membership at Scale with Rapid][rapid]
 * [Fast Paxos][fpx]

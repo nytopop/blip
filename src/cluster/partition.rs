@@ -7,7 +7,10 @@
 //! Strategies for handling network partitions.
 use super::{
     cut::{MultiNodeCut, Subscription},
-    proto::{Endpoint, Join, JoinReq, JoinResp, NodeId, NodeMetadata, PreJoinReq},
+    proto::{
+        membership_client::MembershipClient, Endpoint, Join, JoinReq, JoinResp, NodeId,
+        NodeMetadata, PreJoinReq,
+    },
     Cluster, State,
 };
 use failure::{format_err, Fallible};
@@ -170,7 +173,8 @@ impl<St: Strategy> Cluster<St> {
     /// Request to join the provided seed node. Returns `Ok(_)` if both phases of the join
     /// protocol completed successfully, and `seed` .
     async fn request_join(&self, state: &State, seed: &Endpoint) -> Fallible<JoinResp> {
-        let mut c = self.connect_to(seed).await?;
+        let seed = self.resolve_endpoint(seed)?;
+        let mut c = MembershipClient::connect(seed).await?;
 
         let p1j = PreJoinReq {
             sender: self.local_node(),
@@ -188,13 +192,13 @@ impl<St: Strategy> Cluster<St> {
         };
 
         let send_join_p2 = |(i, raw)| {
-            let client = self.connect_to(&raw);
+            let observer = self.resolve_endpoint(&raw);
 
             let mut p2j = p2j.clone();
             p2j.ring = i as u64;
 
             async move {
-                let mut c = client.await?;
+                let mut c = MembershipClient::connect(observer?).await?;
                 c.join(p2j).await.map_err(|e| format_err!("{:?}", e))
             }
         };
