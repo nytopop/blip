@@ -42,7 +42,13 @@
     issue_tracker_base_url = "https://github.com/nytopop/blip/issues/",
     html_logo_url = "https://raw.githubusercontent.com/nytopop/blip/master/blip.png",
     html_root_url = "https://docs.rs/blip/0.1.0-alpha.6",
-    test(no_crate_inject, attr(deny(rust_2018_idioms)))
+    test(
+        no_crate_inject,
+        attr(
+            deny(rust_2018_idioms, unused_imports, unused_mut),
+            allow(unused_variables)
+        )
+    )
 )]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
