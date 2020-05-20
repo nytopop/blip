@@ -52,6 +52,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
+    join, select,
     sync::{broadcast, oneshot, RwLock},
     task,
     time::{delay_for, delay_until, timeout, Instant},
@@ -511,12 +512,10 @@ impl<St: partition::Strategy> Cluster<St> {
 
     pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> Fallible<()> {
         loop {
-            let (_, cut) = futures::join! {
-                self.run_fd_round(),
-                cuts.recv(),
-            };
-
-            cut?;
+            select! {
+                () = self.run_fd_round() => {}
+                cut = cuts.recv() => { cut?; }
+            }
         }
     }
 
@@ -536,18 +535,21 @@ impl<St: partition::Strategy> Cluster<St> {
             .collect();
 
         for _ in 0..STRIKES {
-            let live = (subjects.iter())
-                .map(|(ring, e)| timeout(TIMEOUT, self.probe_endpoint(*ring, e.clone())))
+            // start sending off probes, each of which times out at the ~same time.
+            let probes = (subjects.iter().cloned())
+                .map(|(ring, e)| timeout(TIMEOUT, self.probe_endpoint(ring, e)))
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|r| async move { r.ok() })
-                .filter_map(|r| async move { r.ok() });
+                .filter_map(|r| async move { r.ok() })
+                .collect::<Vec<usize>>();
 
-            live.for_each(|ring| {
+            // wait for all probes to finish, and for TIMEOUT to elapse. this caps the rate
+            // at which failing subjects are probed to 1 per TIMEOUT, and healthy ones to 1
+            // per TIMEOUT*STRIKES.
+            for ring in join![delay_for(TIMEOUT), probes].1 {
                 let i = subjects.iter().position(|(r, _)| *r == ring).unwrap();
                 subjects.remove(i);
-                async {}
-            })
-            .await;
+            }
         }
 
         self.propagate_edges(
