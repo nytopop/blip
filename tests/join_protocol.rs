@@ -48,7 +48,7 @@ async fn single_node_cluster_bootstrap() {
 
     select! {
         e = srv => panic!("mesh exited with: {:?}", e),
-        _ = h.wait_for_peers(1) => {}
+        _ = h.cfg_change(1) => {}
     }
 }
 
@@ -79,7 +79,7 @@ async fn three_node_cluster_bootstrap() {
         e = s2 => panic!("s2 exited with: {:?}", e),
         e = s3 => panic!("s3 exited with: {:?}", e),
 
-        (c1, c2, c3) = join3(h1.wait_for_peers(3), h2.wait_for_peers(3), h3.wait_for_peers(3)) => {
+        (c1, c2, c3) = join3(h1.cfg_change(3), h2.cfg_change(3), h3.cfg_change(3)) => {
             assert!(c1.conf_id() == c2.conf_id());
             assert!(c2.conf_id() == c3.conf_id());
         }
@@ -119,7 +119,7 @@ async fn three_node_cluster_partition_recovery() {
         e = &mut s2 => panic!("s2 exited with: {:?}", e),
         e = &mut s3 => panic!("s3 exited with: {:?}", e),
 
-        (c1, c2, c3) = join3(h1.wait_for_peers(3), h2.wait_for_peers(3), h3.wait_for_peers(3)) => {
+        (c1, c2, c3) = join3(h1.cfg_change(3), h2.cfg_change(3), h3.cfg_change(3)) => {
             assert!(c1.conf_id() == c2.conf_id());
             assert!(c2.conf_id() == c3.conf_id());
         }
@@ -130,7 +130,7 @@ async fn three_node_cluster_partition_recovery() {
         e = &mut s1 => panic!("s1 exited with: {:?}", e),
         e = &mut s2 => panic!("s2 exited with: {:?}", e),
 
-        (c1, c2) = join(h1.wait_for_peers(2), h2.wait_for_peers(2)) => {
+        (c1, c2) = join(h1.cfg_change(2), h2.cfg_change(2)) => {
             assert!(c1.conf_id() == c2.conf_id());
         }
     }
@@ -141,7 +141,7 @@ async fn three_node_cluster_partition_recovery() {
         e = &mut s2 => panic!("s2 exited with: {:?}", e),
         e = &mut s3 => panic!("s3 exited with: {:?}", e),
 
-        (c1, c2, c3) = join3(h1.wait_for_peers(3), h2.wait_for_peers(3), h3.wait_for_peers(3)) => {
+        (c1, c2, c3) = join3(h1.cfg_change(3), h2.cfg_change(3), h3.cfg_change(3)) => {
             assert!(c1.conf_id() == c2.conf_id());
             assert!(c2.conf_id() == c3.conf_id());
         }

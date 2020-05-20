@@ -27,13 +27,17 @@ impl MeshService for CfgHandle {
 }
 
 impl CfgHandle {
-    /// Wait for a configuration with `n` peers.
-    pub async fn wait_for_peers(&self, n: usize) -> MultiNodeCut {
+    /// Blocks until a view-change proposal with `n` peers is accepted.
+    pub async fn cfg_change(&self, n: usize) -> MultiNodeCut {
         let mut wait = Duration::from_millis(1);
+
+        let init_cfg = (self.cfg.lock().await.as_ref())
+            .map(|cfg| cfg.conf_id())
+            .unwrap_or(0);
 
         loop {
             if let Some(cfg) = self.cfg.lock().await.as_ref() {
-                if cfg.members().len() == n {
+                if cfg.conf_id() != init_cfg && cfg.members().len() == n {
                     break cfg.clone();
                 }
             }
