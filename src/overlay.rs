@@ -322,20 +322,15 @@ impl<St: partition::Strategy> Mesh<St, Server> {
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        let mut stream: FuturesUnordered<_> = vec![
-            svcs.for_each(|_| async {}).then(|_| pending()).boxed(),
-            self.grpc
-                .add_service(Arc::clone(&cluster).into_service())
-                .serve_with_incoming_shutdown(conns, signal)
-                .map_err(|e| e.into())
-                .boxed(),
-            Arc::clone(&cluster).detect_faults(f_cuts).boxed(),
-            St::handle_parts(Arc::clone(&cluster), w_cuts),
-        ]
-        .into_iter()
-        .collect();
-
-        stream.next().await.unwrap()
+        tokio::select! {
+            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
+            r = self.grpc
+                    .add_service(Arc::clone(&cluster).into_service())
+                    .serve_with_incoming_shutdown(conns, signal)
+                    .map_err(|e| e.into()) => r,
+            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
+            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
+        }
     }
 
     /// Consume this [Mesh], creating a future that will run on a tokio executor.
@@ -362,20 +357,15 @@ impl<St: partition::Strategy> Mesh<St, Server> {
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        let mut stream: FuturesUnordered<_> = vec![
-            svcs.for_each(|_| async {}).then(|_| pending()).boxed(),
-            self.grpc
-                .add_service(Arc::clone(&cluster).into_service())
-                .serve_with_shutdown(addr, signal)
-                .map_err(|e| e.into())
-                .boxed(),
-            Arc::clone(&cluster).detect_faults(f_cuts).boxed(),
-            St::handle_parts(Arc::clone(&cluster), w_cuts),
-        ]
-        .into_iter()
-        .collect();
-
-        stream.next().await.unwrap()
+        tokio::select! {
+            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
+            r = self.grpc
+                    .add_service(Arc::clone(&cluster).into_service())
+                    .serve_with_shutdown(addr, signal)
+                    .map_err(|e| e.into()) => r,
+            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
+            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
+        }
     }
 }
 
@@ -439,20 +429,15 @@ where
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        let mut stream: FuturesUnordered<_> = vec![
-            svcs.for_each(|_| async {}).then(|_| pending()).boxed(),
-            self.grpc
-                .add_service(Arc::clone(&cluster).into_service())
-                .serve_with_incoming_shutdown(conns, signal)
-                .map_err(|e| e.into())
-                .boxed(),
-            Arc::clone(&cluster).detect_faults(f_cuts).boxed(),
-            St::handle_parts(Arc::clone(&cluster), w_cuts),
-        ]
-        .into_iter()
-        .collect();
-
-        stream.next().await.unwrap()
+        tokio::select! {
+            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
+            r = self.grpc
+                    .add_service(Arc::clone(&cluster).into_service())
+                    .serve_with_incoming_shutdown(conns, signal)
+                    .map_err(|e| e.into()) => r,
+            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
+            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
+        }
     }
 
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
@@ -471,20 +456,15 @@ where
             .map(|s| s.accept(cluster.subscribe()))
             .collect();
 
-        let mut stream: FuturesUnordered<_> = vec![
-            svcs.for_each(|_| async {}).then(|_| pending()).boxed(),
-            self.grpc
-                .add_service(Arc::clone(&cluster).into_service())
-                .serve_with_shutdown(addr, signal)
-                .map_err(|e| e.into())
-                .boxed(),
-            Arc::clone(&cluster).detect_faults(f_cuts).boxed(),
-            St::handle_parts(Arc::clone(&cluster), w_cuts),
-        ]
-        .into_iter()
-        .collect();
-
-        stream.next().await.unwrap()
+        tokio::select! {
+            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
+            r = self.grpc
+                    .add_service(Arc::clone(&cluster).into_service())
+                    .serve_with_shutdown(addr, signal)
+                    .map_err(|e| e.into()) => r,
+            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
+            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
+        }
     }
 }
 
