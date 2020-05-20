@@ -7,6 +7,7 @@
 //! Multi-node cuts and friends.
 use super::{proto, Metadata, State};
 use futures::stream::{unfold, Stream};
+use rand::{thread_rng, Rng};
 use std::{
     collections::HashMap,
     convert::TryInto,
@@ -71,7 +72,8 @@ impl Subscription {
     }
 }
 
-/// An accepted view-change proposal.
+/// An accepted view-change proposal. Cloning this is cheap, as membership information is
+/// stored as refcounted slices.
 #[derive(Clone, Debug)]
 pub struct MultiNodeCut {
     pub(crate) skipped: u64,
@@ -109,6 +111,14 @@ impl MultiNodeCut {
     /// Returns true if the local node is not a member of the configuration.
     pub fn is_degraded(&self) -> bool {
         self.degraded
+    }
+
+    /// Returns a random healthy member.
+    ///
+    /// # Panics
+    /// Panics if the configuration is empty.
+    pub(crate) fn random_member(&self) -> &Member {
+        &self.members[thread_rng().gen_range(0, self.members.len())]
     }
 
     /// Returns all members in the configuration.

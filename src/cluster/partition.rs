@@ -15,7 +15,6 @@ use futures::{
     future::ready,
     stream::{FuturesUnordered, StreamExt},
 };
-use rand::{thread_rng, Rng};
 use std::{sync::Arc, time::Duration};
 use tokio::time::{delay_for, timeout};
 
@@ -54,20 +53,12 @@ impl Strategy for Rejoin {
                 continue;
             }
 
-            let members = cut.members();
-
-            if members.is_empty() {
+            if cut.members().is_empty() {
                 node.initialize().await;
                 continue;
             }
 
-            loop {
-                let idx = thread_rng().gen_range(0, members.len());
-
-                if node.join_via(&(&members[idx]).into()).await {
-                    break;
-                }
-
+            while !node.join_via(&cut.random_member().into()).await {
                 delay_for(JOIN_DELAY).await;
             }
         }
