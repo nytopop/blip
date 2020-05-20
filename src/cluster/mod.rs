@@ -692,33 +692,39 @@ impl<St: partition::Strategy> Cluster<St> {
         let now = Instant::now();
 
         #[rustfmt::skip]
-        let AlertBatch { started_at, conf_id, edges } = &mut state.cd_batch;
+        let AlertBatch { started, conf_id, edges } = &mut state.cd_batch;
 
-        // if there are any edges from a prior configuration, delete them. this will not
-        // impact the worker (if one exists) because it must have at least one remaining
-        // edge (the one we're about to insert).
+        // if there are any edges from a prior configuration, delete them.
         if mem::replace(conf_id, state.conf_id) != state.conf_id {
             edges.clear();
         }
 
+        // add any new edges for send_batch to propagate.
         let n = edges.len();
         edges.extend(iter);
 
-        if started_at.is_none() && edges.len() != n {
-            *started_at = Some(now);
+        // if we added edges and there's no send_batch task waiting, start one.
+        if edges.len() != n && !mem::replace(started, true) {
             task::spawn(Arc::clone(self).send_batch(now));
         }
     }
 
     async fn send_batch(self: Arc<Self>, started: Instant) {
+        // wait a bit to allow more edges to be included in this batch.
         delay_until(started + Duration::from_millis(100)).await;
 
         let sender = self.local_node();
 
+        // replace the state's cd_batch with an empty one.
         let AlertBatch { conf_id, edges, .. } = {
             let mut state = self.state.write().await;
             mem::take(&mut state.cd_batch)
         };
+
+        // if configuration changed without adding new edges, there's nothing to send.
+        if edges.is_empty() {
+            return;
+        }
 
         self.do_broadcast(BatchedAlert(BatchedAlertReq {
             sender,
@@ -851,7 +857,7 @@ fn join_task() -> (PendingJoin, JoinTask) {
 
 #[derive(Default)]
 struct AlertBatch {
-    started_at: Option<Instant>,
+    started: bool,
     conf_id: u64,
     edges: Vec<Edge>,
 }
