@@ -22,7 +22,7 @@
 A crate for writing fast and highly resilient in-process gRPC service meshes.
 
 # Status
-extremely alpha, you probably shouldn't use this
+Extremely alpha, you ~~probably~~ definitely shouldn't use this. It's just an experiment for now.
 
 # Overview
 `blip` provides an implementation of distributed membership based on [rapid][rapid], exposed
