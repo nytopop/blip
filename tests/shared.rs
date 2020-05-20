@@ -6,44 +6,42 @@
 // copied, modified, or distributed except according to those terms.
 //! Shared code referred to by multiple test modules.
 use blip::{MeshService, MultiNodeCut, Subscription};
-use std::sync::Arc;
-use tokio::{
-    sync::Mutex,
-    time::{delay_for, Duration},
-};
+use tokio::sync::mpsc;
 
-#[derive(Clone, Default)]
-pub struct CfgHandle {
-    cfg: Arc<Mutex<Option<MultiNodeCut>>>,
+pub fn cfg_handle() -> (CfgHandle, CfgService) {
+    let (tx, rx) = mpsc::channel(32);
+
+    let h = CfgHandle { rx };
+    let s = CfgService { tx };
+
+    (h, s)
+}
+
+pub struct CfgService {
+    tx: mpsc::Sender<MultiNodeCut>,
 }
 
 #[blip::async_trait]
-impl MeshService for CfgHandle {
-    async fn accept(self, mut cuts: Subscription) {
+impl MeshService for CfgService {
+    async fn accept(mut self, mut cuts: Subscription) {
         while let Ok(cut) = cuts.recv().await {
-            *self.cfg.lock().await = Some(cut);
+            self.tx.send(cut).await.unwrap();
         }
     }
 }
 
+pub struct CfgHandle {
+    rx: mpsc::Receiver<MultiNodeCut>,
+}
+
 impl CfgHandle {
     /// Blocks until a view-change proposal with `n` peers is accepted.
-    pub async fn cfg_change(&self, n: usize) -> MultiNodeCut {
-        let mut wait = Duration::from_millis(1);
-
-        let init_cfg = (self.cfg.lock().await.as_ref())
-            .map(|cfg| cfg.conf_id())
-            .unwrap_or(0);
-
-        loop {
-            if let Some(cfg) = self.cfg.lock().await.as_ref() {
-                if cfg.conf_id() != init_cfg && cfg.members().len() == n {
-                    break cfg.clone();
-                }
+    pub async fn cfg_change(&mut self, n: usize) -> MultiNodeCut {
+        while let Some(cut) = self.rx.recv().await {
+            if cut.members().len() == n {
+                return cut;
             }
-
-            delay_for(wait).await;
-            wait *= 2;
         }
+        panic!("cfg_handle sender closed!");
     }
 }

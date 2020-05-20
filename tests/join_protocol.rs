@@ -8,7 +8,7 @@ mod shared;
 
 use blip::Mesh;
 use futures::future::{join, join3, FutureExt};
-use shared::CfgHandle;
+use shared::cfg_handle;
 use std::{
     net::SocketAddr,
     sync::atomic::{AtomicU8, Ordering::Relaxed},
@@ -40,10 +40,10 @@ fn addr_in(subnet: u8, host: u8) -> SocketAddr {
 /// Tests that a single node can bootstrap a configuration without any other nodes.
 #[tokio::test]
 async fn single_node_cluster_bootstrap() {
-    let h = CfgHandle::default();
+    let (mut h, hs) = cfg_handle();
 
     let srv = Mesh::default()
-        .add_mesh_service(h.clone())
+        .add_mesh_service(hs)
         .serve(addr_in(subnet(), 1));
 
     select! {
@@ -57,20 +57,18 @@ async fn single_node_cluster_bootstrap() {
 async fn three_node_cluster_bootstrap() {
     let net = subnet();
 
-    let h1 = CfgHandle::default();
-    let s1 = Mesh::default()
-        .add_mesh_service(h1.clone())
-        .serve(addr_in(net, 1));
+    let (mut h1, hs1) = cfg_handle();
+    let s1 = Mesh::default().add_mesh_service(hs1).serve(addr_in(net, 1));
 
-    let h2 = CfgHandle::default();
+    let (mut h2, hs2) = cfg_handle();
     let s2 = Mesh::default()
-        .add_mesh_service(h2.clone())
+        .add_mesh_service(hs2)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 2));
 
-    let h3 = CfgHandle::default();
+    let (mut h3, hs3) = cfg_handle();
     let s3 = Mesh::default()
-        .add_mesh_service(h3.clone())
+        .add_mesh_service(hs3)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 3));
 
@@ -93,22 +91,22 @@ async fn three_node_cluster_bootstrap() {
 async fn three_node_cluster_partition_recovery() {
     let net = subnet();
 
-    let h1 = CfgHandle::default();
+    let (mut h1, hs1) = cfg_handle();
     let mut s1 = Mesh::default()
-        .add_mesh_service(h1.clone())
+        .add_mesh_service(hs1)
         .serve(addr_in(net, 1))
         .boxed();
 
-    let h2 = CfgHandle::default();
+    let (mut h2, hs2) = cfg_handle();
     let mut s2 = Mesh::default()
-        .add_mesh_service(h2.clone())
+        .add_mesh_service(hs2)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 2))
         .boxed();
 
-    let h3 = CfgHandle::default();
+    let (mut h3, hs3) = cfg_handle();
     let mut s3 = Mesh::default()
-        .add_mesh_service(h3.clone())
+        .add_mesh_service(hs3)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 3))
         .boxed();
