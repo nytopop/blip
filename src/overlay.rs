@@ -327,7 +327,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
                     .serve_with_incoming_shutdown(conns, signal)
-                    .map_err(|e| e.into()) => r,
+                    .err_into() => r,
             r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
             r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
         }
@@ -362,7 +362,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
                     .serve_with_shutdown(addr, signal)
-                    .map_err(|e| e.into()) => r,
+                    .err_into() => r,
             r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
             r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
         }
@@ -434,7 +434,7 @@ where
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
                     .serve_with_incoming_shutdown(conns, signal)
-                    .map_err(|e| e.into()) => r,
+                    .err_into() => r,
             r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
             r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
         }
@@ -461,7 +461,7 @@ where
             r = self.grpc
                     .add_service(Arc::clone(&cluster).into_service())
                     .serve_with_shutdown(addr, signal)
-                    .map_err(|e| e.into()) => r,
+                    .err_into() => r,
             r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
             r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
         }

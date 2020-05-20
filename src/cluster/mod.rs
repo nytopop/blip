@@ -568,7 +568,7 @@ impl<St: partition::Strategy> Cluster<St> {
     #[cfg(not(feature = "simulation"))]
     fn connect_to(&self, e: &Endpoint) -> DynFuture<Fallible<MembershipClient<Channel>>> {
         match self.resolve_endpoint(e) {
-            Ok(tg) => MembershipClient::connect(tg).map_err(|e| e.into()).boxed(),
+            Ok(tg) => MembershipClient::connect(tg).err_into().boxed(),
             Err(e) => ready(Err(e.into())).boxed(),
         }
     }
