@@ -531,7 +531,7 @@ impl<St: partition::Strategy> Cluster<St> {
                 .collect::<Vec<usize>>();
 
             // wait for all probes to finish, and for TIMEOUT to elapse. this caps the rate
-            // at which failing subjects are probed to 1 per TIMEOUT, and healthy ones to 1
+            // at which failing subjects are probed to k per TIMEOUT, and healthy ones to k
             // per TIMEOUT*STRIKES.
             for ring in join![delay_for(TIMEOUT), probes].1 {
                 let i = subjects.iter().position(|(r, _)| *r == ring).unwrap();
