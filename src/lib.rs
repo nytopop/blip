@@ -27,6 +27,7 @@
 //! services.
 //!
 //! # Feature Flags
+//! * `full`: Enables all optional features.
 //! * `cache`: Enables the [cache][service::cache] service.
 //!
 //! # References

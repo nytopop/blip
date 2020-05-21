@@ -17,6 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
+full    = ["cache"]
 cache   = ["cache_2q", "consistent_hash_ring", "once_cell"]
 
 [build-dependencies]

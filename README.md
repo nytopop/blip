@@ -45,6 +45,7 @@ For maximal flexibility, state and sharding are deferred to implementations of m
 services.
 
 # Feature Flags
+* `full`: Enables all optional features.
 * `cache`: Enables the cache service.
 
 # References
