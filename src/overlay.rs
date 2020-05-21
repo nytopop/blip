@@ -148,8 +148,11 @@ impl<St, R> Mesh<St, R> {
         self
     }
 
-    /// Configure TLS for connections to other mesh members, as well as for any of the
-    /// endpoints returned in [MeshService] membership updates.
+    /// Configure TLS for outgoing connections to mesh members that are expecting TLS.
+    ///
+    /// This will also be exposed in the [MultiNodeCut][cut]s received from [Subscription]s.
+    ///
+    /// [cut]: super::MultiNodeCut
     pub fn client_tls_config(mut self, tls_config: ClientTlsConfig) -> Self {
         self.cfg.client_tls = Some(Arc::new(tls_config));
         self
