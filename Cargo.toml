@@ -20,7 +20,7 @@ default = []
 cache   = ["cache_2q", "consistent_hash_ring", "once_cell"]
 
 [build-dependencies]
-tonic-build = "0.2.0"
+tonic-build = { version = "0.2.0", default-features = false, features = ["transport", "prost"] }
 
 [dependencies]
 prost          = "0.6.1"
