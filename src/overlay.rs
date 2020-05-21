@@ -273,6 +273,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// Consume this [Mesh], creating a future that will run on a tokio executor.
     ///
     /// Resolves once the mesh has exited.
+    #[inline]
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
         self.serve_with_shutdown(addr, pending()).await
     }
@@ -336,6 +337,7 @@ where
         Mesh { cfg, grpc, svcs }
     }
 
+    #[inline]
     pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
         self.serve_with_shutdown(addr, pending()).await
     }
