@@ -603,6 +603,7 @@ impl<St: partition::Strategy> Cluster<St> {
         self.propagate_cut(cut);
     }
 
+    /// Resolve a [Member] by looking up its metadata in the cluster state.
     fn resolve_member(&self, state: &State, peer: &Endpoint) -> ResolvedMember {
         let addr: SocketAddr = peer
             .try_into()
@@ -618,6 +619,9 @@ impl<St: partition::Strategy> Cluster<St> {
         Ok(Member { addr, tls, meta })
     }
 
+    /// Resolve a [Member] without performing a metadata lookup.
+    ///
+    /// This is useful if the endpoint has not been added to the cluster state.
     fn resolve_member_meta(&self, meta: Metadata, peer: &Endpoint) -> ResolvedMember {
         let addr: SocketAddr = peer
             .try_into()
