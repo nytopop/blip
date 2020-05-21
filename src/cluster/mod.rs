@@ -561,8 +561,8 @@ impl<St: partition::Strategy> Cluster<St> {
         }
 
         let tls = (self.cfg.client_tls)
-            .as_ref()
-            .map(|tls| (&**tls).clone())
+            .as_deref()
+            .cloned()
             .unwrap_or_else(ClientTlsConfig::new);
 
         e.try_into().map(|e: transport::Endpoint| e.tls_config(tls))

@@ -156,7 +156,7 @@ impl From<&Member> for proto::Endpoint {
 
 impl From<&Member> for transport::Endpoint {
     fn from(Member { addr, tls, .. }: &Member) -> Self {
-        match tls.as_ref().map(|tls| (**tls).clone()) {
+        match tls.as_deref().cloned() {
             Some(tls) => format!("https://{}", addr)
                 .try_into()
                 .map(|e: Self| e.tls_config(tls)),
