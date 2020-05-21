@@ -15,7 +15,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     ops::{Deref, DerefMut},
 };
-use tonic::transport;
+use tonic::{transport, Status};
 
 macro_rules! derive_cmp_with {
     ($type:ty, $access:ident => $get:expr) => {
@@ -153,9 +153,17 @@ impl From<(SocketAddr, bool)> for Endpoint {
 }
 
 impl Endpoint {
+    /// Set whether tls is expected for this endpoint.
     pub const fn tls(mut self, tls: bool) -> Self {
         self.tls = tls;
         self
+    }
+
+    /// Verify that the ip address and port in this endpoint are valid.
+    pub fn validate(&self) -> Result<(), Status> {
+        self.try_into()
+            .map_err(|_| Status::invalid_argument("invalid endpoint"))
+            .map(|_: SocketAddr| {})
     }
 }
 

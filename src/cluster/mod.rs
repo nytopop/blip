@@ -86,6 +86,8 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     /// order to initiate phase 2 of the join protocol.
     async fn pre_join(&self, req: Request<PreJoinReq>) -> GrpcResponse<PreJoinResp> {
         let PreJoinReq { sender, uuid } = req.into_inner();
+        sender.validate()?;
+
         let state = self.state.read().await;
 
         if !state.nodes.contains(&sender) {
@@ -110,6 +112,7 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     async fn join(&self, req: Request<JoinReq>) -> GrpcResponse<JoinResp> {
         #[rustfmt::skip]
         let JoinReq { sender, ring, uuid, conf_id, meta } = req.into_inner();
+        sender.validate()?;
         let mut state = self.state.write().await;
 
         state.verify_config(conf_id)?;
@@ -160,12 +163,9 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
             return Err(Status::aborted("fast paxos round has already begun"));
         }
 
-        let invalid_node = |e: &Edge| e.join.is_none() != state.nodes.contains(&e.node);
-        let invalid_ring = |e: &Edge| state.verify_ring(&sender, &e.node, e.ring).is_err();
-
-        if edges.iter().any(|e| invalid_node(e) || invalid_ring(e)) {
-            return Err(Status::invalid_argument("invalid edge(s) in batched alert"));
-        }
+        (edges.iter())
+            .map(|e| state.verify_edge(&sender, e))
+            .collect::<Grpc<()>>()?;
 
         for Edge { node, ring, join } in edges {
             state.merge_cd_alert(node, join, Vote {
@@ -903,6 +903,21 @@ impl State {
             Err(Status::aborted("mismatched configuration id"))
         } else {
             Ok(())
+        }
+    }
+
+    /// Verify that `edge` doesn't violate any protocol invariants.
+    fn verify_edge(&self, sender: &Endpoint, edge: &Edge) -> Grpc<()> {
+        if edge.join.is_some() {
+            edge.node.validate()?;
+        }
+
+        if edge.join.is_none() != self.nodes.contains(&edge.node) {
+            // either a node is trying to join and is already a member, or a node is
+            // not a member and is trying to leave.
+            Err(Status::aborted("edge cannot apply to configuration"))
+        } else {
+            self.verify_ring(sender, &edge.node, edge.ring)
         }
     }
 
