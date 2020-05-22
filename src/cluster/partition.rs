@@ -81,7 +81,6 @@ impl<St: Strategy> Cluster<St> {
 
             state.clear_consensus();
             state.clear_membership();
-            state.last_cut = None;
 
             self.bootstrap(&mut state);
         }
