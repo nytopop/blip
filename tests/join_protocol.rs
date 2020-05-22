@@ -16,7 +16,7 @@ use tokio::select;
 async fn single_node_cluster_bootstrap() {
     let (mut h, hs) = cfg_handle();
 
-    let srv = Mesh::default()
+    let srv = Mesh::low_latency()
         .add_mesh_service(hs)
         .serve(addr_in(subnet(), 1));
 
@@ -32,16 +32,18 @@ async fn three_node_cluster_bootstrap() {
     let net = subnet();
 
     let (mut h1, hs1) = cfg_handle();
-    let s1 = Mesh::default().add_mesh_service(hs1).serve(addr_in(net, 1));
+    let s1 = Mesh::low_latency()
+        .add_mesh_service(hs1)
+        .serve(addr_in(net, 1));
 
     let (mut h2, hs2) = cfg_handle();
-    let s2 = Mesh::default()
+    let s2 = Mesh::low_latency()
         .add_mesh_service(hs2)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 2));
 
     let (mut h3, hs3) = cfg_handle();
-    let s3 = Mesh::default()
+    let s3 = Mesh::low_latency()
         .add_mesh_service(hs3)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 3));
@@ -66,20 +68,20 @@ async fn three_node_cluster_partition_recovery() {
     let net = subnet();
 
     let (mut h1, hs1) = cfg_handle();
-    let mut s1 = Mesh::default()
+    let mut s1 = Mesh::low_latency()
         .add_mesh_service(hs1)
         .serve(addr_in(net, 1))
         .boxed();
 
     let (mut h2, hs2) = cfg_handle();
-    let mut s2 = Mesh::default()
+    let mut s2 = Mesh::low_latency()
         .add_mesh_service(hs2)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 2))
         .boxed();
 
     let (mut h3, hs3) = cfg_handle();
-    let mut s3 = Mesh::default()
+    let mut s3 = Mesh::low_latency()
         .add_mesh_service(hs3)
         .join_seed(addr_in(net, 1), false)
         .serve(addr_in(net, 3))

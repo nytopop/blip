@@ -20,14 +20,14 @@ async fn keys_are_distributed() {
 
     let a = Cache::from_fn(16, |_| b"a".to_vec());
     let (mut ha, hsa) = cfg_handle();
-    let af = Mesh::default()
+    let af = Mesh::low_latency()
         .add_mesh_service(hsa)
         .add_service(a.clone())
         .serve(addr_in(net, 1));
 
     let b = Cache::from_fn(16, |_| b"b".to_vec());
     let (mut hb, hsb) = cfg_handle();
-    let bf = Mesh::default()
+    let bf = Mesh::low_latency()
         .add_mesh_service(hsb)
         .add_service(b.clone())
         .join_seed(addr_in(net, 1), false)
@@ -65,14 +65,14 @@ async fn key_placement_is_stable() {
 
     let a = Cache::from_fn(1, |_| b"a".to_vec());
     let (mut ha, hsa) = cfg_handle();
-    let af = Mesh::default()
+    let af = Mesh::low_latency()
         .add_mesh_service(hsa)
         .add_service(a.clone())
         .serve(addr_in(net, 1));
 
     let b = Cache::from_fn(1, |_| b"b".to_vec());
     let (mut hb, hsb) = cfg_handle();
-    let bf = Mesh::default()
+    let bf = Mesh::low_latency()
         .add_mesh_service(hsb)
         .add_service(b.clone())
         .join_seed(addr_in(net, 1), false)

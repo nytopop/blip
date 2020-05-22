@@ -111,15 +111,27 @@ impl Default for Mesh<Rejoin, Server> {
 }
 
 impl Mesh<Rejoin, Server> {
-    /// Create a new [Mesh].
+    /// Create a new [Mesh] with the default configuration.
+    #[inline]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a new [Mesh] with reduced timeouts and faster fault detection, at the expense
+    /// of significantly more probe traffic.
+    ///
+    /// This should generally be avoided except in test code.
+    #[inline]
+    pub fn low_latency() -> Self {
+        Self::default()
+            .fault_timeout(Duration::from_millis(150))
+            .fault_strikes(2)
     }
 }
 
 /// Methods for blip-specific membership protocol configuration.
 impl<St, R> Mesh<St, R> {
-    /// Configure the cut detector.
+    /// Configure the cut detector. All members of the mesh must have the same configuration.
     ///
     /// # Panics
     /// Panics if any invariants (listed at [CutDetectorConfig]) are not upheld.
