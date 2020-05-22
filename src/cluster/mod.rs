@@ -500,59 +500,103 @@ impl<St: partition::Strategy> Cluster<St> {
         Subscription::new(state, rx)
     }
 
-    pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> Fallible<()> {
-        loop {
-            select! {
-                () = self.run_fd_round() => {}
-                cut = cuts.recv() => { cut?; }
-            }
-        }
-    }
-
     #[inline]
     fn local_node(&self) -> Endpoint {
         Endpoint::from(self.addr).tls(self.cfg.server_tls)
     }
 
-    async fn run_fd_round(self: &Arc<Self>) {
-        let mut subjects: Vec<_> = (self.state.read().await.nodes)
-            .successors(&self.local_node())
-            .cloned()
-            .enumerate()
-            .collect();
-
-        for _ in 0..self.cfg.fd_strikes {
-            // start sending off probes, each of which times out at the ~same time.
-            let probes = (subjects.iter().cloned())
-                .map(|(ring, e)| timeout(self.cfg.fd_timeout, self.probe_endpoint(ring, e)))
-                .collect::<FuturesUnordered<_>>()
-                .filter_map(|r| async move { r.ok() })
-                .filter_map(|r| async move { r.ok() })
-                .collect::<Vec<usize>>();
-
-            // wait for all probes to finish, and for fd_timeout to elapse. this caps the
-            // rate at which failing subjects are probed to k per fd_timeout, and healthy
-            // ones to k per fd_timeout * fd_strikes.
-            for ring in join![delay_for(self.cfg.fd_timeout), probes].1 {
-                let i = subjects.iter().position(|(r, _)| *r == ring).unwrap();
-                subjects.remove(i);
+    pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> Fallible<()> {
+        loop {
+            select! {
+                _ = self.spin_fd_probes() => {}
+                cut = cuts.recv() => { cut?; }
             }
         }
-
-        self.enqueue_edges(
-            &mut *self.state.write().await,
-            subjects
-                .into_iter()
-                .map(|(ring, e)| Edge::down(e, ring as u64)),
-        );
     }
 
-    async fn probe_endpoint(&self, ring: usize, e: Endpoint) -> Fallible<usize> {
-        let e = self.resolve_endpoint(&e)?;
-        let mut c = MembershipClient::connect(e).await?;
-        c.probe(ProbeReq {}).await?;
+    async fn spin_fd_probes(self: &Arc<Self>) {
+        let (conf_id, mut subjects) = async {
+            #[derive(Default)]
+            struct Status {
+                rings: Vec<u64>,
+                faults: usize,
+            }
 
-        Ok(ring)
+            let state = self.state.read().await;
+            let mut subjects: HashMap<_, Status> = HashMap::with_capacity(self.cfg.k);
+
+            // we might have been assigned the same subject on multiple rings, so we use
+            // a hashmap keyed by subject to deduplicate our outgoing probes.
+            for (ring, subject) in (state.nodes.successors(&self.local_node()))
+                .cloned()
+                .enumerate()
+            {
+                subjects.entry(subject).or_default().rings.push(ring as u64);
+            }
+
+            (state.conf_id, subjects)
+        }
+        .await;
+
+        loop {
+            // start sending off probes, each of which times out after fd_timeout.
+            let probes = (subjects.keys().cloned())
+                .map(|e| self.probe_member(e))
+                .collect::<FuturesUnordered<_>>()
+                .collect::<Vec<_>>();
+
+            // wait for all probes to finish (concurrently), and for fd_timeout to elapse.
+            // this caps the rate at which subjects are probed to k per fd_timeout.
+            for result in join![delay_for(self.cfg.fd_timeout), probes].1 {
+                match result {
+                    // probe succeeded, so reset.
+                    Ok(e) => subjects.get_mut(&e).unwrap().faults = 0,
+                    // probe failed, so increment.
+                    Err(e) => subjects.get_mut(&e).unwrap().faults += 1,
+                }
+            }
+
+            // NOTE: here be dragons. for some incomprehensible reason, constructing the
+            // 'faulted' iterator before this await point produces compiler errors like:
+            //
+            //     `implementation of `std::iter::Iterator` is not general enough`
+            //
+            // way out in the integration tests, but otherwise compiles fine. this is some
+            // spooky api breakage at a distance.
+            let mut state = self.state.write().await;
+
+            // if a there's been a view-change, we need to reload the subjects hashmap. most
+            // of the time we'll instead be pre-empted and cancelled before locking (during
+            // the probe).
+            if state.conf_id != conf_id {
+                break;
+            }
+
+            // subjects are marked as faulted if they failed fd_strikes successive probes.
+            let faulted = (subjects.iter_mut())
+                .filter(|(_, s)| s.faults >= self.cfg.fd_strikes)
+                .flat_map(|(e, s)| {
+                    s.faults = 0;
+                    s.rings.iter().map(move |ring| Edge::down(e.clone(), *ring))
+                });
+
+            self.enqueue_edges(&mut *state, faulted);
+        }
+    }
+
+    async fn probe_member(&self, endpoint: Endpoint) -> Result<Endpoint, Endpoint> {
+        let send_probe = timeout(self.cfg.fd_timeout, async {
+            let e = self.resolve_endpoint(&endpoint)?;
+            let mut c = MembershipClient::connect(e).await?;
+            c.probe(ProbeReq {}).await?;
+
+            Fallible::Ok(())
+        });
+
+        match send_probe.await {
+            Ok(Ok(_)) => Ok(endpoint),
+            _ => Err(endpoint),
+        }
     }
 
     /// Resolve an `Endpoint` to a `transport::Endpoint`, applying the configured client TLS
