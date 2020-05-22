@@ -101,6 +101,8 @@ impl Default for Mesh<Rejoin, Server> {
                 meta: Default::default(),
                 server_tls: false,
                 client_tls: None,
+                fd_timeout: Duration::from_secs(1),
+                fd_strikes: 3,
             },
             grpc: Server::builder(),
             svcs: Vec::new(),
@@ -158,7 +160,7 @@ impl<St, R> Mesh<St, R> {
         self
     }
 
-    /// Sets the strategy with which to handle network partitions.
+    /// Set the strategy with which to handle network partitions.
     ///
     /// See [partition] for possible options to use here.
     // TODO: actually write different strategies, or remove the parameterization
@@ -167,11 +169,37 @@ impl<St, R> Mesh<St, R> {
         let strategy = _St::default();
 
         #[rustfmt::skip]
-        let Config { lh, k, seed, meta, server_tls, client_tls, .. } = cfg;
+        let Config { lh, k, seed, meta, server_tls, client_tls, fd_timeout, fd_strikes, .. } = cfg;
         #[rustfmt::skip]
-        let cfg = Config { strategy, lh, k, seed, meta, server_tls, client_tls };
+        let cfg = Config { strategy, lh, k, seed, meta, server_tls, client_tls, fd_timeout, fd_strikes };
 
         Mesh { cfg, grpc, svcs }
+    }
+
+    /// Set a timeout for the fault detector. If a subject fails to respond to a probe within
+    /// this amount of time (for all attempts in the elimination round), it will be marked as
+    /// faulty by the observer.
+    ///
+    /// The rate at which probe messages are sent is also determined by this value. A probe
+    /// is sent to each subject every `timeout`. Extrapolated to the whole mesh, every node
+    /// receives `subjects_per_observer` probes every `timeout`.
+    ///
+    /// Defaults to 1 second.
+    pub fn fault_timeout(mut self, timeout: Duration) -> Self {
+        self.cfg.fd_timeout = timeout;
+        self
+    }
+
+    /// Set the number of probe attempts in each fault detector elimination round.
+    ///
+    /// Defaults to 3.
+    ///
+    /// # Panics
+    /// Panics if `strikes == 0`.
+    pub fn fault_strikes(mut self, strikes: usize) -> Self {
+        assert!(strikes != 0);
+        self.cfg.fd_strikes = strikes;
+        self
     }
 
     /// Add a [MeshService] that doesn't necessarily implement [ExposedService].

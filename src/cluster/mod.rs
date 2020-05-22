@@ -65,6 +65,8 @@ pub struct Config<St> {
     pub(crate) meta: Metadata,
     pub(crate) server_tls: bool,
     pub(crate) client_tls: Option<Arc<ClientTlsConfig>>,
+    pub(crate) fd_timeout: Duration,
+    pub(crate) fd_strikes: usize,
 }
 
 type Grpc<T> = Result<T, Status>;
@@ -511,29 +513,25 @@ impl<St: partition::Strategy> Cluster<St> {
     }
 
     async fn run_fd_round(self: &Arc<Self>) {
-        // TODO(cfg): allow both of these to be configured
-        const TIMEOUT: Duration = Duration::from_secs(1);
-        const STRIKES: usize = 3;
-
         let mut subjects: Vec<_> = (self.state.read().await.nodes)
             .successors(&self.local_node())
             .cloned()
             .enumerate()
             .collect();
 
-        for _ in 0..STRIKES {
+        for _ in 0..self.cfg.fd_strikes {
             // start sending off probes, each of which times out at the ~same time.
             let probes = (subjects.iter().cloned())
-                .map(|(ring, e)| timeout(TIMEOUT, self.probe_endpoint(ring, e)))
+                .map(|(ring, e)| timeout(self.cfg.fd_timeout, self.probe_endpoint(ring, e)))
                 .collect::<FuturesUnordered<_>>()
                 .filter_map(|r| async move { r.ok() })
                 .filter_map(|r| async move { r.ok() })
                 .collect::<Vec<usize>>();
 
-            // wait for all probes to finish, and for TIMEOUT to elapse. this caps the rate
-            // at which failing subjects are probed to k per TIMEOUT, and healthy ones to k
-            // per TIMEOUT*STRIKES.
-            for ring in join![delay_for(TIMEOUT), probes].1 {
+            // wait for all probes to finish, and for fd_timeout to elapse. this caps the
+            // rate at which failing subjects are probed to k per fd_timeout, and healthy
+            // ones to k per fd_timeout * fd_strikes.
+            for ring in join![delay_for(self.cfg.fd_timeout), probes].1 {
                 let i = subjects.iter().position(|(r, _)| *r == ring).unwrap();
                 subjects.remove(i);
             }
