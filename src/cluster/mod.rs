@@ -128,7 +128,7 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         state.verify_unused_uuid(&uuid)?;
         state.verify_ring(&local_node, &sender, ring)?;
 
-        self.propagate_edge(&mut state, Edge {
+        self.enqueue_edge(&mut state, Edge {
             node: sender.clone(),
             ring,
             join: Some(Join { uuid, meta }),
@@ -537,7 +537,7 @@ impl<St: partition::Strategy> Cluster<St> {
             }
         }
 
-        self.propagate_edges(
+        self.enqueue_edges(
             &mut *self.state.write().await,
             subjects
                 .into_iter()
@@ -645,11 +645,13 @@ impl<St: partition::Strategy> Cluster<St> {
         let _ = self.cuts.send(cut);
     }
 
-    fn propagate_edge(self: &Arc<Self>, state: &mut State, edge: Edge) {
-        self.propagate_edges(state, std::iter::once(edge));
+    /// Enqueue a single edge to be included in the next batched broadcast.
+    fn enqueue_edge(self: &Arc<Self>, state: &mut State, edge: Edge) {
+        self.enqueue_edges(state, std::iter::once(edge));
     }
 
-    fn propagate_edges<I: IntoIterator<Item = Edge>>(self: &Arc<Self>, state: &mut State, iter: I) {
+    /// Enqueue some edge(s) to be included in the next batched broadcast.
+    fn enqueue_edges<I: IntoIterator<Item = Edge>>(self: &Arc<Self>, state: &mut State, iter: I) {
         #[rustfmt::skip]
         let AlertBatch { started, conf_id, edges } = &mut state.cd_batch;
 
@@ -668,6 +670,8 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
+    /// Send a batched cut detection broadcast. This coalesces any edges enqueued within the
+    /// same ~short period of time into the same batch.
     async fn send_batch(self: Arc<Self>) {
         // wait a bit to allow more edges to be included in this batch.
         delay_for(Duration::from_millis(100)).await;
