@@ -18,10 +18,8 @@ use futures::{
     future::ready,
     stream::{FuturesUnordered, StreamExt},
 };
-use std::{sync::Arc, time::Duration};
+use std::{borrow::Cow, cmp, sync::Arc, time::Duration};
 use tokio::time::{delay_for, timeout};
-
-const JOIN_DELAY: Duration = Duration::from_millis(1000);
 
 mod private {
     pub trait Sealed {}
@@ -61,9 +59,8 @@ impl Strategy for Rejoin {
                 continue;
             }
 
-            while !node.join_via(&cut.random_member().into()).await {
-                delay_for(JOIN_DELAY).await;
-            }
+            node.join_via_backoff(|| Cow::Owned(cut.random_member().into()))
+                .await;
         }
     }
 }
@@ -73,9 +70,7 @@ impl<St: Strategy> Cluster<St> {
     /// a single node bootstrap cluster.
     async fn initialize(&self) {
         if let Some(seed) = self.cfg.seed.as_ref() {
-            while !self.join_via(seed).await {
-                delay_for(JOIN_DELAY).await;
-            }
+            self.join_via_backoff(|| Cow::Borrowed(seed)).await;
         } else {
             let mut state = self.state.write().await;
 
@@ -120,18 +115,33 @@ impl<St: Strategy> Cluster<St> {
         self.propagate_cut(cut);
     }
 
-    /// Join a cluster through the provided seed node.
+    /// Join a cluster using the provided function to generate a seed on each attempt.
+    ///
+    /// Uses exponential backoff if join failures are encountered.
+    async fn join_via_backoff<'a, F: FnMut() -> Cow<'a, Endpoint>>(&self, mut seed: F) {
+        const RETRY_MAX: Duration = Duration::from_secs(4);
+        const JOIN_MAX: Duration = Duration::from_secs(15);
+
+        let mut retry_backoff = Duration::from_millis(200);
+        let mut join_backoff = Duration::from_secs(5);
+
+        while !self.join_via(&seed(), join_backoff).await {
+            delay_for(retry_backoff).await;
+            retry_backoff = cmp::min(retry_backoff * 2, RETRY_MAX);
+            join_backoff = cmp::min(join_backoff + (join_backoff / 2), JOIN_MAX);
+        }
+    }
+
+    /// Attempt to join a cluster via the provided seed node.
     ///
     /// Returns true if the seed's configuration was accepted. Conversely, returns false
     /// if the join failed for any reason.
-    async fn join_via(&self, seed: &Endpoint) -> bool {
-        const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
-
+    async fn join_via(&self, seed: &Endpoint, max_wait: Duration) -> bool {
         let mut state = self.state.write().await;
 
         state.uuid = NodeId::generate();
 
-        let request = timeout(JOIN_TIMEOUT, self.request_join(&state, seed));
+        let request = timeout(max_wait, self.request_join(&state, seed));
 
         let JoinResp { nodes, uuids, .. } = match request.await {
             Ok(Ok(join)) => join,
@@ -170,7 +180,7 @@ impl<St: Strategy> Cluster<St> {
     }
 
     /// Request to join the provided seed node. Returns `Ok(_)` if both phases of the join
-    /// protocol completed successfully, and `seed` .
+    /// protocol completed successfully.
     async fn request_join(&self, state: &State, seed: &Endpoint) -> Fallible<JoinResp> {
         let seed = self.resolve_endpoint(seed)?;
         let mut c = MembershipClient::connect(seed).await?;
