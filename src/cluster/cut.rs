@@ -64,7 +64,7 @@ impl Subscription {
         Ok(cut)
     }
 
-    /// Consume this subscription, converting it into a [Stream] of view-change proposals.
+    /// Convert this subscription into a [Stream] of view-change proposals.
     pub fn into_stream(self) -> impl Stream<Item = MultiNodeCut> {
         unfold(self, |mut s| async { Some((s.recv().await.ok()?, s)) })
     }
