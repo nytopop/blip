@@ -479,7 +479,7 @@ impl<St: partition::Strategy> Cluster<St> {
             px_p1bs: Vec::new(),
         }));
 
-        let (cuts, _) = broadcast::channel(32);
+        let (cuts, _) = broadcast::channel(8);
 
         Cluster {
             cfg,
