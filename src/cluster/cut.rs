@@ -12,6 +12,7 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     net::SocketAddr,
+    result,
     sync::{Arc, Weak},
 };
 use tokio::sync::{
@@ -19,6 +20,8 @@ use tokio::sync::{
     RwLock,
 };
 use tonic::transport::{self, ClientTlsConfig};
+
+pub(crate) type Result = result::Result<(), Closed>;
 
 /// An error returned by [recv](Subscription::recv) if the subscription source was dropped.
 ///
@@ -39,7 +42,7 @@ impl Subscription {
     }
 
     /// Resolves when the next view-change proposal is accepted, or the subscription ends.
-    pub async fn recv(&mut self) -> Result<MultiNodeCut, Closed> {
+    pub async fn recv(&mut self) -> result::Result<MultiNodeCut, Closed> {
         let n = match self.rx.recv().await {
             Ok(view_change) => {
                 return Ok(view_change);

@@ -345,8 +345,10 @@ impl<St: partition::Strategy> Mesh<St, Server> {
                     .add_service(Arc::clone(&cluster).into_service())
                     .serve_with_shutdown(addr, signal)
                     .err_into() => r,
-            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
-            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
+            r = Arc::clone(&cluster).detect_faults(f_cuts)
+                    .err_into() => r,
+            r = St::handle_parts(Arc::clone(&cluster), w_cuts)
+                    .err_into() => r,
         }
     }
 }
@@ -404,8 +406,10 @@ where
                     .add_service(Arc::clone(&cluster).into_service())
                     .serve_with_shutdown(addr, signal)
                     .err_into() => r,
-            r = Arc::clone(&cluster).detect_faults(f_cuts) => r,
-            r = St::handle_parts(Arc::clone(&cluster), w_cuts) => r,
+            r = Arc::clone(&cluster).detect_faults(f_cuts)
+                    .err_into() => r,
+            r = St::handle_parts(Arc::clone(&cluster), w_cuts)
+                    .err_into() => r,
         }
     }
 }

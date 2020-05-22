@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 //! Strategies for handling network partitions.
 use super::{
-    cut::{MultiNodeCut, Subscription},
+    cut::{self, MultiNodeCut, Subscription},
     proto::{
         membership_client::MembershipClient, Endpoint, Join, JoinReq, JoinResp, NodeId,
         NodeMetadata, PreJoinReq,
@@ -33,7 +33,7 @@ mod private {
 pub trait Strategy: private::Sealed + Default + Send + Sync + 'static {
     // If this method exits, the mesh goes down with it (!).
     #[doc(hidden)]
-    async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> Fallible<()>;
+    async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> cut::Result;
 }
 
 /// Rejoin the existing cluster through random healthy members.
@@ -44,7 +44,7 @@ impl private::Sealed for Rejoin {}
 
 #[crate::async_trait]
 impl Strategy for Rejoin {
-    async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> Fallible<()> {
+    async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> cut::Result {
         node.initialize().await;
 
         loop {

@@ -505,7 +505,7 @@ impl<St: partition::Strategy> Cluster<St> {
         Endpoint::from(self.addr).tls(self.cfg.server_tls)
     }
 
-    pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> Fallible<()> {
+    pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> cut::Result {
         loop {
             select! {
                 _ = self.spin_fd_probes() => {}
