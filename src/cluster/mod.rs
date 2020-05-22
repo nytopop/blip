@@ -555,6 +555,8 @@ impl<St: partition::Strategy> Cluster<St> {
         Ok(ring)
     }
 
+    /// Resolve an `Endpoint` to a `transport::Endpoint`, applying the configured client TLS
+    /// settings if specified by the endpoint.
     fn resolve_endpoint(&self, e: &Endpoint) -> Result<transport::Endpoint, Compat<EndpointError>> {
         if !e.tls {
             return e.try_into();
@@ -568,6 +570,9 @@ impl<St: partition::Strategy> Cluster<St> {
         e.try_into().map(|e: transport::Endpoint| e.tls_config(tls))
     }
 
+    /// Apply a view-change proposal to `state`. This will propagate the view-change to any
+    /// subscribed tasks, and unblock any joining nodes in the proposal (if we're the ones
+    /// handling their join request).
     fn apply_view_change(&self, state: &mut State, proposal: Vec<Endpoint>) {
         let mut joined = Vec::with_capacity(proposal.len());
         let mut kicked = Vec::with_capacity(proposal.len());
@@ -632,6 +637,7 @@ impl<St: partition::Strategy> Cluster<St> {
         Ok(Member { addr, tls, meta })
     }
 
+    /// Get a client tls config, if `enabled`.
     fn get_client_tls(&self, enabled: bool) -> Option<Arc<ClientTlsConfig>> {
         guard! { enabled };
 
@@ -642,13 +648,15 @@ impl<St: partition::Strategy> Cluster<St> {
         Some(tls)
     }
 
+    /// Propagate a view-change proposal to all subscribed tasks. This includes the fault
+    /// detector, partition detector, and any subscribed mesh services (from the overlay).
     #[inline]
     fn propagate_cut(&self, cut: MultiNodeCut) {
         // NOTE: this might fail, but if it does we'll exit soon anyway.
         let _ = self.cuts.send(cut);
     }
 
-    /// Enqueue a single edge to be included in the next batched broadcast.
+    /// Enqueue an edge to be included in the next batched broadcast.
     #[inline]
     fn enqueue_edge(self: &Arc<Self>, state: &mut State, edge: Edge) {
         self.enqueue_edges(state, std::iter::once(edge));
