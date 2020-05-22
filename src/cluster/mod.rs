@@ -489,6 +489,7 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
+    #[inline]
     pub(crate) fn into_service(self: Arc<Self>) -> MembershipServer<Arc<Self>> {
         MembershipServer::new(self)
     }
@@ -508,6 +509,7 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
+    #[inline]
     fn local_node(&self) -> Endpoint {
         Endpoint::from(self.addr).tls(self.cfg.server_tls)
     }
@@ -640,12 +642,14 @@ impl<St: partition::Strategy> Cluster<St> {
         Some(tls)
     }
 
+    #[inline]
     fn propagate_cut(&self, cut: MultiNodeCut) {
         // NOTE: this might fail, but if it does we'll exit soon anyway.
         let _ = self.cuts.send(cut);
     }
 
     /// Enqueue a single edge to be included in the next batched broadcast.
+    #[inline]
     fn enqueue_edge(self: &Arc<Self>, state: &mut State, edge: Edge) {
         self.enqueue_edges(state, std::iter::once(edge));
     }
@@ -779,6 +783,7 @@ struct JoinTask {
 impl Future for JoinTask {
     type Output = Result<JoinResp, oneshot::error::RecvError>;
 
+    #[inline]
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.rx).poll(ctx)
     }
@@ -790,6 +795,7 @@ struct PendingJoin {
 
 impl PendingJoin {
     /// Returns false if the originating task has dropped their [JoinTask].
+    #[inline]
     fn task_is_waiting(&self) -> bool {
         Arc::weak_count(&self.tx) > 0
     }
@@ -979,6 +985,7 @@ impl State {
 
     /// Returns an iterator over the number of unique reports received for each edge in
     /// this cut detection round.
+    #[inline]
     fn cd_report_counts(&self) -> impl Iterator<Item = usize> + '_ {
         self.cd_reports.values().map(HashSet::len)
     }
@@ -1005,6 +1012,7 @@ impl State {
     }
 
     /// Returns the size of quorum needed for a fast paxos proposal to be accepted.
+    #[inline]
     fn fast_quorum(&self) -> usize {
         let sz = self.nodes.len() as f64;
         (sz * 0.75).ceil() as usize
@@ -1089,6 +1097,7 @@ impl State {
     }
 
     /// Returns the size of quorum needed for classical paxos to proceed.
+    #[inline]
     fn slow_quorum(&self) -> usize {
         self.nodes.len() / 2
     }

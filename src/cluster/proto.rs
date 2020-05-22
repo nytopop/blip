@@ -35,6 +35,7 @@ macro_rules! derive_cmp_with {
         }
 
         impl Ord for $type {
+            #[inline]
             fn cmp(&self, other: &Self) -> cmp::Ordering {
                 self.partial_cmp(&other).unwrap()
             }
@@ -42,6 +43,7 @@ macro_rules! derive_cmp_with {
 
         #[allow(clippy::derive_hash_xor_eq)]
         impl Hash for $type {
+            #[inline]
             fn hash<H: Hasher>(&self, state: &mut H) {
                 let $access = self;
                 let c = $get;
@@ -147,6 +149,7 @@ impl From<SocketAddr> for Endpoint {
 }
 
 impl From<(SocketAddr, bool)> for Endpoint {
+    #[inline]
     fn from((addr, tls): (SocketAddr, bool)) -> Self {
         Self::from(addr).tls(tls)
     }
@@ -168,12 +171,14 @@ impl Endpoint {
 }
 
 impl From<&NodeId> for u128 {
+    #[inline]
     fn from(id: &NodeId) -> Self {
         ((id.high as u128) << 64) | id.low as u128
     }
 }
 
 impl From<u128> for NodeId {
+    #[inline]
     fn from(x: u128) -> Self {
         Self {
             high: (x >> 64) as u64,
@@ -183,6 +188,7 @@ impl From<u128> for NodeId {
 }
 
 impl NodeId {
+    #[inline]
     pub fn generate() -> Self {
         random::<u128>().into()
     }
@@ -191,12 +197,14 @@ impl NodeId {
 impl Deref for Metadata {
     type Target = HashMap<String, Vec<u8>>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.keys
     }
 }
 
 impl DerefMut for Metadata {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.keys
     }
