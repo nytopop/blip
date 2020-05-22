@@ -259,13 +259,13 @@ impl Cache {
     #[inline]
     async fn liftoff(&self, key: Bytes) -> Flight {
         match self.0.inflight.lock().await.entry(key) {
-            // we must set a value and notify any followers
+            // we must set a value and notify any followers.
             Entry::Vacant(v) => Flight::Leader(Arc::clone(v.insert(Arc::new(Lazy {
                 sem: Semaphore::new(0),
                 val: OnceCell::new(),
             })))),
 
-            // we can read the value when leader notifies us
+            // we can read the value when leader notifies us.
             Entry::Occupied(o) => Flight::Follower(Arc::clone(o.get())),
         }
     }
@@ -273,12 +273,12 @@ impl Cache {
     /// Retrieve the value associated with `key`. Unlike [Cache::get], this does _not_
     /// deduplicate requests for the same key.
     async fn get_inner(&self, key: Bytes) -> Result<Bytes, Status> {
-        // check if key is already loaded in the hot cache
+        // check if key is already loaded in the hot cache.
         if let Some(buf) = load(&self.0.hot_keys, &key).await {
             return Ok(buf);
         }
 
-        // check if key hashes onto another node
+        // check if key hashes onto another node.
         if let Some(shard) = self.lookup_shard(&key).await {
             let mut c = CacheClient::connect(shard)
                 .await
@@ -288,7 +288,7 @@ impl Cache {
             let val = c.get(Key { key: key.to_vec() }).await?;
             let buf = Bytes::from(val.into_inner().buf);
 
-            // store in the hot cache 1/8 of the time (space is limited)
+            // store in the hot cache 1/8 of the time (space is limited).
             if thread_rng().gen_range(0, 8) == 4 {
                 store(&self.0.hot_keys, key, buf.clone()).await;
             }
@@ -296,12 +296,12 @@ impl Cache {
             return Ok(buf);
         }
 
-        // check if key is already loaded in the local cache
+        // check if key is already loaded in the local cache.
         if let Some(buf) = load(&self.0.local_keys, &key).await {
             return Ok(buf);
         }
 
-        // otherwise, generate from source
+        // otherwise, generate from source.
         let buf = Bytes::from(self.0.source.get(&key).await?);
         store(&self.0.local_keys, key, buf.clone()).await;
         Ok(buf)
@@ -316,11 +316,11 @@ impl Cache {
     async fn lookup_shard(&self, key: &[u8]) -> Option<Endpoint> {
         let r = self.0.remote.read().await;
         // if there's no configuration, we're in standalone mode or the mesh hasn't yet
-        // bootstrapped; in either case, assume we're the owner of key
+        // bootstrapped; in either case, assume we're the owner of key.
         let cut = r.config.as_ref()?;
 
         let shard = r.shards[key];
-        // if the shard's addr is our addr, it's us
+        // if the shard's addr is our addr, it's us.
         guard!(cut.local_addr() != shard);
 
         let i = r.indices[&shard];
