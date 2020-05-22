@@ -48,7 +48,7 @@ use tokio::{
     join, select,
     sync::{broadcast, oneshot, RwLock},
     task,
-    time::{delay_for, delay_until, timeout, Instant},
+    time::{delay_for, timeout},
 };
 use tonic::{
     transport::{self, ClientTlsConfig},
@@ -650,8 +650,6 @@ impl<St: partition::Strategy> Cluster<St> {
     }
 
     fn propagate_edges<I: IntoIterator<Item = Edge>>(self: &Arc<Self>, state: &mut State, iter: I) {
-        let now = Instant::now();
-
         #[rustfmt::skip]
         let AlertBatch { started, conf_id, edges } = &mut state.cd_batch;
 
@@ -666,13 +664,13 @@ impl<St: partition::Strategy> Cluster<St> {
 
         // if we added edges and there's no send_batch task waiting, start one.
         if edges.len() != n && !mem::replace(started, true) {
-            task::spawn(Arc::clone(self).send_batch(now));
+            task::spawn(Arc::clone(self).send_batch());
         }
     }
 
-    async fn send_batch(self: Arc<Self>, started: Instant) {
+    async fn send_batch(self: Arc<Self>) {
         // wait a bit to allow more edges to be included in this batch.
-        delay_until(started + Duration::from_millis(100)).await;
+        delay_for(Duration::from_millis(100)).await;
 
         let sender = self.local_node();
 
