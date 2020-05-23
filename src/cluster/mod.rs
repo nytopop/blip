@@ -25,7 +25,6 @@ use proto::{
     *,
 };
 
-use failure::{Compat, Fallible};
 use fnv::FnvHasher;
 use futures::{
     future::TryFutureExt,
@@ -44,6 +43,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use thiserror::Error;
 use tokio::{
     join, select,
     sync::{broadcast, oneshot, RwLock},
@@ -586,11 +586,9 @@ impl<St: partition::Strategy> Cluster<St> {
 
     async fn probe_member(&self, endpoint: Endpoint) -> Result<Endpoint, Endpoint> {
         let send_probe = timeout(self.cfg.fd_timeout, async {
-            let e = self.resolve_endpoint(&endpoint)?;
-            let mut c = MembershipClient::connect(e).await?;
-            c.probe(ProbeReq {}).await?;
-
-            Fallible::Ok(())
+            let e = self.resolve_endpoint(&endpoint).map_err(drop)?;
+            let mut c = MembershipClient::connect(e).map_err(drop).await?;
+            c.probe(ProbeReq {}).map_ok(drop).map_err(drop).await
         });
 
         match send_probe.await {
@@ -601,7 +599,7 @@ impl<St: partition::Strategy> Cluster<St> {
 
     /// Resolve an `Endpoint` to a `transport::Endpoint`, applying the configured client TLS
     /// settings if specified by the endpoint.
-    fn resolve_endpoint(&self, e: &Endpoint) -> Result<transport::Endpoint, Compat<EndpointError>> {
+    fn resolve_endpoint(&self, e: &Endpoint) -> Result<transport::Endpoint, EndpointError> {
         if !e.tls {
             return e.try_into();
         }
@@ -654,9 +652,7 @@ impl<St: partition::Strategy> Cluster<St> {
 
     /// Resolve a [Member] by looking up its metadata in the cluster state.
     fn resolve_member(&self, state: &State, peer: &Endpoint) -> ResolvedMember {
-        let addr: SocketAddr = peer
-            .try_into()
-            .map_err(MemberResolutionError::InvalidSocketAddr)?;
+        let addr: SocketAddr = peer.try_into()?;
 
         let meta = (state.metadata)
             .get(peer)
@@ -672,10 +668,7 @@ impl<St: partition::Strategy> Cluster<St> {
     ///
     /// This is useful if the endpoint has not been added to the cluster state.
     fn resolve_member_meta(&self, meta: Metadata, peer: &Endpoint) -> ResolvedMember {
-        let addr: SocketAddr = peer
-            .try_into()
-            .map_err(MemberResolutionError::InvalidSocketAddr)?;
-
+        let addr: SocketAddr = peer.try_into()?;
         let tls = self.get_client_tls(peer.tls);
 
         Ok(Member { addr, tls, meta })
@@ -816,11 +809,12 @@ impl PaxosRound {
     }
 }
 
-#[derive(Debug, failure_derive::Fail)]
+#[derive(Copy, Clone, Debug, Error)]
 enum MemberResolutionError {
-    #[fail(display = "invalid socketaddr: {:?}", _0)]
-    InvalidSocketAddr(SocketAddrError),
-    #[fail(display = "missing metadata")]
+    #[error("invalid socketaddr: {}", .0)]
+    InvalidSocketAddr(#[from] SocketAddrError),
+
+    #[error("missing metadata")]
     MissingMetadata,
 }
 

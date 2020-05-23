@@ -15,6 +15,7 @@ use std::{
     result,
     sync::{Arc, Weak},
 };
+use thiserror::Error;
 use tokio::sync::{
     broadcast::{Receiver, RecvError},
     RwLock,
@@ -26,8 +27,8 @@ pub(crate) type Result = result::Result<(), Closed>;
 /// An error returned by [recv](Subscription::recv) if the subscription source was dropped.
 ///
 /// If this error is received, the local node can be assumed to have stopped executing.
-#[derive(Copy, Clone, Debug, failure_derive::Fail)]
-#[fail(display = "closed")]
+#[derive(Copy, Clone, Debug, Error)]
+#[error("closed")]
 pub struct Closed;
 
 /// A subscription to accepted view-change proposals.

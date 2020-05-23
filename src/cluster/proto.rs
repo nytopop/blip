@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 //! Protocol buffers definitions used in blip's membership protocol.
-use failure::Fail;
 use rand::random;
 use std::{
     cmp,
@@ -15,6 +14,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     ops::{Deref, DerefMut},
 };
+use thiserror::Error;
 use tonic::{transport, Status};
 
 macro_rules! derive_cmp_with {
@@ -59,55 +59,33 @@ derive_cmp_with!(Endpoint, e => (&e.host, e.port, e.tls));
 derive_cmp_with!(NodeId, id => u128::from(id));
 derive_cmp_with!(Rank, r => (r.round, r.node_idx));
 
-#[derive(Debug, failure_derive::Fail)]
+#[derive(Debug, Error)]
 pub enum EndpointError {
-    #[fail(display = "invalid uri: {:?}", _0)]
-    InvalidUri(http::uri::InvalidUri),
-    #[fail(display = "invalid socketaddr: {:?}", _0)]
-    InvalidSocketAddr(SocketAddrError),
+    #[error("invalid uri: {:?}", .0)]
+    InvalidUri(#[from] http::uri::InvalidUri),
+
+    #[error("invalid socketaddr: {:?}", .0)]
+    InvalidSocketAddr(#[from] SocketAddrError),
 }
 
 impl TryFrom<&Endpoint> for transport::Endpoint {
-    type Error = failure::Compat<EndpointError>;
+    type Error = EndpointError;
 
     fn try_from(e: &Endpoint) -> Result<Self, Self::Error> {
-        let addr: SocketAddr = e
-            .try_into()
-            .map_err(EndpointError::InvalidSocketAddr)
-            .map_err(Fail::compat)?;
+        let addr: SocketAddr = e.try_into()?;
 
         let scheme = if e.tls { "https" } else { "http" };
 
-        format!("{}://{}", scheme, addr)
-            .try_into()
-            .map_err(EndpointError::InvalidUri)
-            .map_err(Fail::compat)
+        Ok(format!("{}://{}", scheme, addr).try_into()?)
     }
 }
 
-impl TryFrom<&Endpoint> for http::Uri {
-    type Error = failure::Compat<EndpointError>;
-
-    fn try_from(e: &Endpoint) -> Result<Self, Self::Error> {
-        let addr: SocketAddr = e
-            .try_into()
-            .map_err(EndpointError::InvalidSocketAddr)
-            .map_err(Fail::compat)?;
-
-        let scheme = if e.tls { "https" } else { "http" };
-
-        format!("{}://{}", scheme, addr)
-            .try_into()
-            .map_err(EndpointError::InvalidUri)
-            .map_err(Fail::compat)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, failure_derive::Fail)]
+#[derive(Copy, Clone, Debug, Error)]
 pub enum SocketAddrError {
-    #[fail(display = "invalid host len: {}", _0)]
+    #[error("invalid host len: {}", .0)]
     InvalidLen(usize),
-    #[fail(display = "invalid port: {}", _0)]
+
+    #[error("invalid port: {}", .0)]
     InvalidPort(u32),
 }
 

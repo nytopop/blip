@@ -8,18 +8,19 @@
 use super::{
     cut::{self, MultiNodeCut, Subscription},
     proto::{
-        membership_client::MembershipClient, Endpoint, Join, JoinReq, JoinResp, NodeId,
-        NodeMetadata, PreJoinReq,
+        membership_client::MembershipClient, Endpoint, EndpointError, Join, JoinReq, JoinResp,
+        NodeId, NodeMetadata, PreJoinReq, PreJoinResp,
     },
     Cluster, State,
 };
-use failure::{format_err, Fallible};
 use futures::{
-    future::ready,
+    future::TryFutureExt,
     stream::{FuturesUnordered, StreamExt},
 };
 use std::{borrow::Cow, cmp, sync::Arc, time::Duration};
+use thiserror::Error;
 use tokio::time::{delay_for, timeout};
+use tonic::transport;
 
 mod private {
     pub trait Sealed {}
@@ -63,6 +64,30 @@ impl Strategy for Rejoin {
                 .await;
         }
     }
+}
+
+#[derive(Debug, Error)]
+enum JoinError {
+    #[error("endpoint resolution failed: {}", .0)]
+    Resolution(#[from] EndpointError),
+
+    #[error("join phase 1 failed: {}", .0)]
+    Phase1(GrpcError),
+
+    #[error("join phase 2 failed: {}", .0)]
+    Phase2(GrpcError),
+
+    #[error("join phase 2 failed: no observers")]
+    NoObservers,
+}
+
+#[derive(Debug, Error)]
+enum GrpcError {
+    #[error("connection failed: {}", .0)]
+    Connect(#[from] transport::Error),
+
+    #[error("call failed: {}", .0)]
+    Call(#[from] tonic::Status),
 }
 
 impl<St: Strategy> Cluster<St> {
@@ -181,46 +206,64 @@ impl<St: Strategy> Cluster<St> {
 
     /// Request to join the provided seed node. Returns `Ok(_)` if both phases of the join
     /// protocol completed successfully.
-    async fn request_join(&self, state: &State, seed: &Endpoint) -> Fallible<JoinResp> {
-        let seed = self.resolve_endpoint(seed)?;
-        let mut c = MembershipClient::connect(seed).await?;
-
-        let p1j = PreJoinReq {
+    async fn request_join(&self, state: &State, seed: &Endpoint) -> Result<JoinResp, JoinError> {
+        let p1j_req = PreJoinReq {
             sender: self.local_node(),
             uuid: state.uuid.clone(),
         };
 
-        let r1 = c.pre_join(p1j).await?.into_inner();
+        let r1 = self.join_phase1(p1j_req, seed).await?;
 
-        let p2j = JoinReq {
+        let conf_id = r1.conf_id;
+
+        let p2j_req = |ring| JoinReq {
             sender: self.local_node(),
-            ring: std::u64::MAX,
+            ring: ring as u64,
             uuid: state.uuid.clone(),
-            conf_id: r1.conf_id,
+            conf_id,
             meta: self.cfg.meta.clone(),
-        };
-
-        let send_join_p2 = |(i, raw)| {
-            let observer = self.resolve_endpoint(&raw);
-
-            let mut p2j = p2j.clone();
-            p2j.ring = i as u64;
-
-            async move {
-                let mut c = MembershipClient::connect(observer?).await?;
-                c.join(p2j).await.map_err(|e| format_err!("{:?}", e))
-            }
         };
 
         let mut joins = (r1.contact.into_iter())
             .enumerate()
-            .map(send_join_p2)
-            .collect::<FuturesUnordered<_>>()
-            .filter_map(|r| ready(r.map(|jr| jr.into_inner()).ok()));
+            .map(move |(ring, observer)| (p2j_req(ring), observer))
+            .map(|(req, observer)| self.join_phase2(req, observer))
+            .collect::<FuturesUnordered<_>>();
 
-        match joins.next().await {
-            Some(join) => Ok(join),
-            None => Err(format_err!("join p2 failed")),
+        let mut e = None;
+        while let Some(resp) = joins.next().await {
+            match resp {
+                Ok(resp) => return Ok(resp),
+                Err(err) => e = Some(err),
+            }
         }
+
+        Err(e.unwrap_or(JoinError::NoObservers))
+    }
+
+    /// Initiate phase 1 of the join protocol via the provided endpoint.
+    async fn join_phase1(&self, req: PreJoinReq, via: &Endpoint) -> Result<PreJoinResp, JoinError> {
+        let seed = self.resolve_endpoint(via)?;
+
+        let mut c = MembershipClient::connect(seed)
+            .map_err(|e| JoinError::Phase1(e.into()))
+            .await?;
+
+        (c.pre_join(req).map_ok(|r| r.into_inner()))
+            .map_err(|e| JoinError::Phase1(e.into()))
+            .await
+    }
+
+    /// Initiate phase 2 of the join protocol with the provided `observer`.
+    async fn join_phase2(&self, req: JoinReq, observer: Endpoint) -> Result<JoinResp, JoinError> {
+        let observer = self.resolve_endpoint(&observer)?;
+
+        let mut c = MembershipClient::connect(observer)
+            .map_err(|e| JoinError::Phase2(e.into()))
+            .await?;
+
+        (c.join(req).map_ok(|r| r.into_inner()))
+            .map_err(|e| JoinError::Phase2(e.into()))
+            .await
     }
 }

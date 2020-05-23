@@ -6,17 +6,17 @@
 // copied, modified, or distributed except according to those terms.
 //! Batteries-included grpc service mesh.
 use super::cluster::{
-    cut::Subscription,
+    cut::{Closed, Subscription},
     partition::{self, Rejoin},
     Cluster, Config,
 };
 
-use failure::Fallible;
 use futures::{
     future::{pending, FutureExt, TryFutureExt},
     stream::{FuturesUnordered, StreamExt},
 };
-use std::{error::Error, future::Future, net::SocketAddr, sync::Arc, time::Duration};
+use std::{error, future::Future, net::SocketAddr, result, sync::Arc, time::Duration};
+use thiserror::Error;
 use tokio::select;
 use tonic::{
     body::BoxBody,
@@ -25,11 +25,27 @@ use tonic::{
         Service,
     },
     transport::{
+        self,
         server::{Router, Unimplemented},
         Body, ClientTlsConfig, NamedService, Server, ServerTlsConfig,
     },
 };
 use tracing::Span;
+
+/// A `Result<(), Error>`.
+pub type Result = result::Result<(), Error>;
+
+/// An error which causes a mesh to exit.
+#[derive(Debug, Error)]
+pub enum Error {
+    /// An error encountered in the grpc transport.
+    #[error("mesh: {}", .0)]
+    Transport(#[from] transport::Error),
+
+    /// An error encountered when an internal task exits unexpectedly.
+    #[error("mesh: task closed")]
+    Closed(#[from] Closed),
+}
 
 /// Specifies observer/subject thresholds for the cut detector.
 #[derive(Copy, Clone, Debug)]
@@ -304,7 +320,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
         S: ExposedService + 'static,
         <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
         <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Error:
-            Into<Box<dyn Error + Send + Sync>> + Send,
+            Into<Box<dyn error::Error + Send + Sync>> + Send,
     {
         #[rustfmt::skip]
         let Mesh { mut cfg, mut grpc, svcs } = self.add_mesh_service(svc.clone());
@@ -318,7 +334,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     ///
     /// Resolves once the mesh has exited.
     #[inline]
-    pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
+    pub async fn serve(self, addr: SocketAddr) -> Result {
         self.serve_with_shutdown(addr, pending()).await
     }
 
@@ -327,7 +343,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// Shutdown will be initiated when `signal` resolves.
     ///
     /// Resolves once the mesh has exited.
-    pub async fn serve_with_shutdown<F>(mut self, addr: SocketAddr, signal: F) -> Fallible<()>
+    pub async fn serve_with_shutdown<F>(mut self, addr: SocketAddr, signal: F) -> Result
     where F: Future<Output = ()> + Send {
         let cluster = Arc::new(Cluster::new(self.cfg, addr));
 
@@ -360,10 +376,10 @@ impl<St: partition::Strategy, A, B> Mesh<St, Router<A, B>>
 where
     A: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>> + Clone + Send + 'static,
     A::Future: Send + 'static,
-    A::Error: Into<Box<dyn Error + Send + Sync>> + Send,
+    A::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
     B: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>> + Clone + Send + 'static,
     B::Future: Send + 'static,
-    B::Error: Into<Box<dyn Error + Send + Sync>> + Send,
+    B::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
 {
     pub fn add_service<S>(
         self,
@@ -373,7 +389,7 @@ where
         S: ExposedService + 'static,
         <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
         <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Error:
-            Into<Box<dyn Error + Send + Sync>> + Send,
+            Into<Box<dyn error::Error + Send + Sync>> + Send,
     {
         #[rustfmt::skip]
         let Mesh { mut cfg, grpc, svcs } = self.add_mesh_service(svc.clone());
@@ -384,11 +400,11 @@ where
     }
 
     #[inline]
-    pub async fn serve(self, addr: SocketAddr) -> Fallible<()> {
+    pub async fn serve(self, addr: SocketAddr) -> Result {
         self.serve_with_shutdown(addr, pending()).await
     }
 
-    pub async fn serve_with_shutdown<F>(self, addr: SocketAddr, signal: F) -> Fallible<()>
+    pub async fn serve_with_shutdown<F>(self, addr: SocketAddr, signal: F) -> Result
     where F: Future<Output = ()> + Send {
         let cluster = Arc::new(Cluster::new(self.cfg, addr));
 
@@ -431,7 +447,7 @@ where
         + Send
         + 'static,
     S::Future: Send + 'static,
-    S::Error: Into<Box<dyn Error + Send + Sync>> + Send,
+    S::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
 {
     /// Wrap a type that implements [Service].
     pub fn new(svc: S) -> Self {

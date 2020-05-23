@@ -24,17 +24,16 @@ cache   = ["cache_2q", "consistent_hash_ring", "once_cell"]
 tonic-build = { version = "0.2.0", default-features = false, features = ["transport", "prost"] }
 
 [dependencies]
-prost          = "0.6.1"
-bytes          = "0.5.4"
-http           = "0.2.1"
-tracing        = "0.1.13"
-fnv            = "1.0.6"
-rand           = "0.7.3"
-failure        = "0.1.8"
-failure_derive = "0.1.8"
-tonic          = { version = "0.2.1" , features = ["transport", "tls"] }
-futures        = { version = "0.3.4" , features = ["alloc"] }
-tokio          = { version = "0.2.21", features = ["sync", "rt-threaded", "time", "macros"] }
+prost     = "0.6.1"
+bytes     = "0.5.4"
+http      = "0.2.1"
+tracing   = "0.1.13"
+fnv       = "1.0.6"
+rand      = "0.7.3"
+tonic     = { version = "0.2.1" , features = ["transport", "tls"] }
+futures   = { version = "0.3.4" , features = ["alloc"] }
+tokio     = { version = "0.2.21", features = ["sync", "rt-threaded", "time", "macros"] }
+thiserror = "1.0.19"
 
 # cache
 cache_2q             = { version = "0.10.0", optional = true }
