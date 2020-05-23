@@ -586,13 +586,13 @@ impl<St: partition::Strategy> Cluster<St> {
 
     async fn probe_member(&self, endpoint: Endpoint) -> Result<Endpoint, Endpoint> {
         let send_probe = timeout(self.cfg.fd_timeout, async {
-            let e = self.resolve_endpoint(&endpoint).map_err(drop)?;
-            let mut c = MembershipClient::connect(e).map_err(drop).await?;
-            c.probe(ProbeReq {}).map_ok(drop).map_err(drop).await
+            let e = self.resolve_endpoint(&endpoint).ok()?;
+            let mut c = MembershipClient::connect(e).await.ok()?;
+            c.probe(ProbeReq {}).await.ok()
         });
 
-        match send_probe.await {
-            Ok(Ok(_)) => Ok(endpoint),
+        match send_probe.await.ok().flatten() {
+            Some(_) => Ok(endpoint),
             _ => Err(endpoint),
         }
     }
