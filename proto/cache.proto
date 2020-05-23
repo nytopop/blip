@@ -14,7 +14,7 @@ service Cache {
 	rpc Get(Key) returns (Value);
 }
 
-// A string key.
+// A binary key.
 message Key {
 	// The key.
 	required bytes key = 1;
