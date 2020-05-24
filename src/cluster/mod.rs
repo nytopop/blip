@@ -633,14 +633,21 @@ impl<St: partition::Strategy> Cluster<St> {
 
         let local_node = self.local_node();
 
+        joined.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+        kicked.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+
+        let mut members: Vec<_> = (state.nodes.iter())
+            .map(|node| self.resolve_member(state, node).unwrap())
+            .collect();
+
+        members.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+
         let cut = MultiNodeCut {
             skipped: 0,
             local_addr: self.addr,
             degraded: !state.nodes.contains(&local_node),
             conf_id: state.refresh_config(),
-            members: (state.nodes.iter())
-                .map(|node| self.resolve_member(state, node).unwrap())
-                .collect(),
+            members: members.into(),
             joined: joined.into(),
             kicked: kicked.into(),
         };

@@ -12,6 +12,7 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     net::SocketAddr,
+    ops::Index,
     result,
     sync::{Arc, Weak},
 };
@@ -89,6 +90,21 @@ pub struct MultiNodeCut {
     pub(crate) kicked: Arc<[Member]>,
 }
 
+impl Index<SocketAddr> for MultiNodeCut {
+    type Output = Member;
+
+    /// Binary search for the provided `addr`.
+    ///
+    /// O(log n)
+    ///
+    /// # Panics
+    /// Panics if a member with `addr` doesn't exist in the configuration.
+    #[inline]
+    fn index(&self, addr: SocketAddr) -> &Self::Output {
+        self.lookup(addr).unwrap()
+    }
+}
+
 impl MultiNodeCut {
     /// Returns the number of cuts that were skipped between this and the last received
     /// cut.
@@ -138,6 +154,18 @@ impl MultiNodeCut {
     /// Returns any members that were kicked.
     pub fn kicked(&self) -> &Arc<[Member]> {
         &self.kicked
+    }
+
+    /// Lookup a specific member in the configuration by socket address.
+    ///
+    /// Executes in O(log n) time.
+    pub fn lookup(&self, addr: SocketAddr) -> Option<&Member> {
+        let key = |s: SocketAddr| (s.ip(), s.port());
+
+        self.members
+            .binary_search_by_key(&key(addr), |m| key(m.addr()))
+            .ok()
+            .map(|i| &self.members[i])
     }
 }
 

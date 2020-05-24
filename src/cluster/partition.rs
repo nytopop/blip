@@ -186,14 +186,20 @@ impl<St: Strategy> Cluster<St> {
             assert!(state.uuids.insert(uuid));
         }
 
+        joined.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+
+        let mut members: Vec<_> = (state.nodes.iter())
+            .map(|node| self.resolve_member(&state, node).unwrap())
+            .collect();
+
+        members.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+
         let cut = MultiNodeCut {
             skipped: 0,
             local_addr: self.addr,
             degraded: !state.nodes.contains(&self.local_node()),
             conf_id: state.refresh_config(),
-            members: (state.nodes.iter())
-                .map(|node| self.resolve_member(&state, node).unwrap())
-                .collect(),
+            members: members.into(),
             joined: joined.into(),
             kicked: vec![].into(),
         };
