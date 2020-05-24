@@ -114,7 +114,6 @@ enum Flight {
 
 struct Remote {
     config: Option<MultiNodeCut>,
-    indices: HashMap<SocketAddr, usize>,
     shards: Ring<SocketAddr>,
 }
 
@@ -132,19 +131,9 @@ impl MeshService for Cache {
     async fn accept(self: Box<Self>, mut cuts: Subscription) {
         while let Ok(cut) = cuts.recv().await {
             let mut r = self.0.remote.write().await;
-            let r = &mut *r;
-
-            r.indices.clear();
-            r.indices.extend(
-                (cut.members().iter())
-                    .enumerate()
-                    .filter(|(_, m)| m.metadata().contains_key(META_KEY))
-                    .map(|(i, m)| (m.addr(), i)),
-            );
 
             r.shards.clear();
-            r.shards.extend(r.indices.keys().copied());
-
+            r.shards.extend(cut.with_meta(META_KEY).map(|m| m.0.addr()));
             r.config = Some(cut);
         }
     }
@@ -201,7 +190,6 @@ impl Cache {
     pub fn new<S: Source>(max_keys: usize, source: S) -> Self {
         let remote = Remote {
             config: None,
-            indices: HashMap::new(),
             shards: Ring::default(),
         };
 
@@ -315,18 +303,17 @@ impl Cache {
     #[inline]
     async fn lookup_shard(&self, key: &[u8]) -> Option<Endpoint> {
         let r = self.0.remote.read().await;
+
         // if there's no configuration, we're in standalone mode or the mesh hasn't yet
         // bootstrapped; in either case, assume we're the owner of key.
         let cut = r.config.as_ref()?;
 
-        let shard = r.shards[key];
-        // if the shard's addr is our addr, it's us.
-        guard!(cut.local_addr() != shard);
-
-        let i = r.indices[&shard];
-        let m = &cut.members()[i];
-
-        Some(Endpoint::from(m))
+        match *r.shards.try_get(key)? {
+            // if the shard's addr is our addr, it's ours.
+            s if s == cut.local_addr() => None,
+            // otherwise it's some other node's.
+            s => Some(Endpoint::from(&cut[s])),
+        }
     }
 }
 
