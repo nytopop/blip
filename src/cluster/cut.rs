@@ -156,6 +156,15 @@ impl MultiNodeCut {
         &self.kicked
     }
 
+    /// Returns an iterator over any members that have `key` in their metadata, as well as
+    /// each associated value.
+    pub fn with_meta<K: AsRef<str>>(&self, key: K) -> impl Iterator<Item = (&Member, &[u8])> {
+        self.members.iter().filter_map(move |m| {
+            let val = m.meta.get(key.as_ref())?;
+            Some((m, val.as_ref()))
+        })
+    }
+
     /// Lookup a specific member in the configuration by socket address.
     ///
     /// Executes in O(log n) time.
