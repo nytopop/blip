@@ -30,6 +30,7 @@ use futures::{
     future::TryFutureExt,
     stream::{FuturesUnordered, StreamExt},
 };
+use log::{error, info, warn};
 use rand::{thread_rng, Rng};
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
@@ -52,7 +53,7 @@ use tokio::{
 };
 use tonic::{
     transport::{self, ClientTlsConfig},
-    Request, Response, Status,
+    Code, Request, Response, Status,
 };
 
 #[doc(hidden)]
@@ -181,6 +182,7 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         if let Some(proposal) = state.generate_cd_proposal(self.cfg.lh) {
             state.register_fpx_round(&proposal);
 
+            info!("starting fast round: conf_id={}", conf_id);
             task::spawn(Arc::clone(self).do_broadcast(FastPhase2b(FastPhase2bReq {
                 sender: self.local_node(),
                 conf_id,
@@ -228,8 +230,12 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         };
 
         if *ballot.get() >= quorum {
-            let (proposal, _) = ballot.remove_entry();
+            let (proposal, votes) = ballot.remove_entry();
             self.apply_view_change(&mut state, proposal);
+            info!(
+                "(fast) applied view-change with {} vote(s): conf_id={}",
+                votes, state.conf_id
+            );
         }
 
         Ok(Response::new(Ack {}))
@@ -266,9 +272,8 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
             vval: state.px_vval.clone(),
         };
 
-        task::spawn(async move {
-            let _ = sender.phase1b(p1b).await;
-        });
+        let send = async move { sender.phase1b(p1b).await };
+        task::spawn(send.map_err(|e| warn!("phase1b failed: {}", e)));
 
         Ok(Response::new(Ack {}))
     }
@@ -356,8 +361,13 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         voters.insert(sender);
 
         if voters.len() > quorum {
-            let (_, proposal) = ballot.remove();
+            let (voters, proposal) = ballot.remove();
             self.apply_view_change(&mut state, proposal);
+            info!(
+                "(slow) applied view-change with {} vote(s): conf_id={}",
+                voters.len(),
+                state.conf_id
+            );
         }
 
         Ok(Response::new(Ack {}))
@@ -414,13 +424,18 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
                 .resolve_endpoint(&subject)
                 .expect("all stored endpoints are valid");
 
-            task::spawn(async move {
+            let send = async move {
                 let mut client = MembershipClient::connect(subject)
                     .map_err(|e| Status::unavailable(e.to_string()))
                     .await?;
 
                 client.broadcast(req).await
-            });
+            };
+
+            task::spawn(send.map_err(|e| match (e.code(), e.message()) {
+                (Code::AlreadyExists, "delivery is redundant") => {}
+                _ => warn!("infection failed: {}", e),
+            }));
         }
 
         match broadcasted {
@@ -762,7 +777,9 @@ impl<St: partition::Strategy> Cluster<St> {
             broadcasted: Some(msg),
         });
 
-        let _ = self.broadcast(req).await;
+        if let Err(e) = self.broadcast(req).await {
+            warn!("broadcast failed: {}", e);
+        }
     }
 
     async fn begin_px_round(self: Arc<Self>, px: PaxosRound) {
@@ -791,6 +808,8 @@ impl<St: partition::Strategy> Cluster<St> {
             state.px_crnd.node_idx = fnv_hash(&sender);
             state.px_crnd.clone()
         };
+
+        info!("starting slow round: conf_id={}", conf_id);
 
         self.do_broadcast(Phase1a(Phase1aReq {
             sender,

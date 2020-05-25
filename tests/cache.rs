@@ -9,13 +9,14 @@
 mod shared;
 
 use blip::{service::Cache, Mesh};
-use shared::{addr_in, cfg_handle, subnet};
+use shared::{addr_in, cfg_handle, init_logger, subnet};
 use tokio::{join, task};
 
 /// Tests that keys are distributed amongst multiple nodes, and that all nodes in a given
 /// configuration agree with each other wrt who owns which key.
 #[tokio::test]
 async fn keys_are_distributed() {
+    init_logger();
     let net = subnet();
 
     let a = Cache::from_fn(16, |_| b"a".to_vec());
@@ -61,6 +62,7 @@ async fn keys_are_distributed() {
 /// nodes evict keys.
 #[tokio::test]
 async fn key_placement_is_stable() {
+    init_logger();
     let net = subnet();
 
     let a = Cache::from_fn(1, |_| b"a".to_vec());

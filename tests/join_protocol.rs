@@ -8,12 +8,14 @@ mod shared;
 
 use blip::Mesh;
 use futures::future::{join, join3, FutureExt};
+use shared::init_logger;
 use shared::{addr_in, cfg_handle, subnet};
 use tokio::select;
 
 /// Tests that a single node can bootstrap a configuration without any other nodes.
 #[tokio::test]
 async fn single_node_cluster_bootstrap() {
+    init_logger();
     let (mut h, hs) = cfg_handle();
 
     let srv = Mesh::low_latency()
@@ -29,6 +31,7 @@ async fn single_node_cluster_bootstrap() {
 /// Tests that three nodes can converge on a single configuration that includes all of them.
 #[tokio::test]
 async fn three_node_cluster_bootstrap() {
+    init_logger();
     let net = subnet();
 
     let (mut h1, hs1) = cfg_handle();
@@ -65,6 +68,7 @@ async fn three_node_cluster_bootstrap() {
 /// rejoin the cluster.
 #[tokio::test]
 async fn three_node_cluster_partition_recovery() {
+    init_logger();
     let net = subnet();
 
     let (mut h1, hs1) = cfg_handle();

@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 //! Shared code referred to by multiple test modules.
 use blip::{MeshService, MultiNodeCut, Subscription};
+use simplelog::{Config, LevelFilter, TestLogger};
 use std::{
     net::SocketAddr,
     sync::atomic::{AtomicU32, Ordering::Relaxed},
@@ -30,6 +31,10 @@ pub fn addr_in(subnet: u32, host: u32) -> SocketAddr {
     addr |= 0x7f800000; // and the loopback stuff
 
     (addr.to_be_bytes(), 10000).into()
+}
+
+pub fn init_logger() {
+    let _ = TestLogger::init(LevelFilter::Info, Config::default());
 }
 
 pub fn cfg_handle() -> (CfgHandle, CfgService) {
