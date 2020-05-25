@@ -112,6 +112,7 @@ enum Flight {
     Follower(Arc<Lazy>),
 }
 
+#[derive(Default)]
 struct Remote {
     config: Option<MultiNodeCut>,
     shards: Ring<SocketAddr>,
@@ -188,16 +189,11 @@ impl Cache {
     /// let cache = Cache::new(1024, Echo);
     /// ```
     pub fn new<S: Source>(max_keys: usize, source: S) -> Self {
-        let remote = Remote {
-            config: None,
-            shards: Ring::default(),
-        };
-
         let max_hot = cmp::max(1, max_keys / 8);
 
         let inner = Inner {
-            inflight: HashMap::new().into(),
-            remote: remote.into(),
+            inflight: Mutex::default(),
+            remote: RwLock::default(),
             local_keys: Cache2q::new(max_keys).into(),
             hot_keys: Cache2q::new(max_hot).into(),
             source,
