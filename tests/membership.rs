@@ -10,7 +10,7 @@ use blip::Mesh;
 use futures::future::{join, join3, FutureExt};
 use shared::init_logger;
 use shared::{addr_in, cfg_handle, subnet};
-use tokio::select;
+use tokio::{select, task};
 
 /// Tests that a single node can bootstrap a configuration without any other nodes.
 #[tokio::test]
@@ -122,6 +122,40 @@ async fn three_node_cluster_partition_recovery() {
         (c1, c2, c3) = join3(h1.cfg_change(3), h2.cfg_change(3), h3.cfg_change(3)) => {
             assert!(c1.conf_id() == c2.conf_id());
             assert!(c2.conf_id() == c3.conf_id());
+        }
+    }
+}
+
+/// Tests that both members of a two node configuration agree on each other's metadata.
+#[tokio::test]
+async fn two_node_cluster_metadata_consensus() {
+    init_logger();
+    let net = subnet();
+
+    let (mut h1, hs1) = cfg_handle();
+    let s1 = Mesh::low_latency()
+        .add_mesh_service(hs1)
+        .add_metadata(vec![("this key is s1".to_owned(), b"s1".to_vec())])
+        .serve(addr_in(net, 1));
+    task::spawn(s1);
+
+    let (mut h2, hs2) = cfg_handle();
+    let s2 = Mesh::low_latency()
+        .add_mesh_service(hs2)
+        .add_metadata(vec![("this key is s2".to_owned(), b"s2".to_vec())])
+        .join_seed(addr_in(net, 1), false)
+        .serve(addr_in(net, 2));
+    task::spawn(s2);
+
+    let (c1, c2) = join(h1.cfg_change(2), h2.cfg_change(2)).await;
+
+    assert!(c1.conf_id() == c2.conf_id());
+
+    for m in c1.members().into_iter().chain(c2.members().into_iter()) {
+        if m.addr() == addr_in(net, 1) {
+            assert_eq!(b"s1".as_ref(), &*m.metadata()["this key is s1"]);
+        } else {
+            assert_eq!(b"s2".as_ref(), &*m.metadata()["this key is s2"]);
         }
     }
 }
