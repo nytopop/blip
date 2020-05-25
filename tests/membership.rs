@@ -159,3 +159,91 @@ async fn two_node_cluster_metadata_consensus() {
         }
     }
 }
+
+/// Tests that all members in a three node configuration agree on each other's metadata, even
+/// if a member leaves the cluster and immediately rejoins with changed metadata.
+#[tokio::test]
+async fn three_node_cluster_metadata_rejoin_consensus() {
+    init_logger();
+    let net = subnet();
+
+    let (mut h1, hs1) = cfg_handle();
+    let mut s1 = Mesh::low_latency()
+        .add_mesh_service(hs1)
+        .add_metadata(vec![("this key is s1".to_owned(), b"s1".to_vec())])
+        .serve(addr_in(net, 1))
+        .boxed();
+
+    let (mut h2, hs2) = cfg_handle();
+    let mut s2 = Mesh::low_latency()
+        .add_mesh_service(hs2)
+        .add_metadata(vec![("this key is s2".to_owned(), b"s2".to_vec())])
+        .join_seed(addr_in(net, 1), false)
+        .serve(addr_in(net, 2))
+        .boxed();
+
+    let (mut h3, hs3) = cfg_handle();
+    let s3 = Mesh::low_latency()
+        .add_mesh_service(hs3)
+        .add_metadata(vec![("this key is s3".to_owned(), b"s3-original".to_vec())])
+        .join_seed(addr_in(net, 1), false)
+        .serve(addr_in(net, 3));
+
+    // wait for cluster to bootstrap
+    select! {
+        e = &mut s1 => panic!("s1 exited with {:?}", e),
+        e = &mut s2 => panic!("s2 exited with {:?}", e),
+        e = s3 => panic!("s3 exited with {:?}", e),
+
+        (c1, c2, c3) = join3(h1.cfg_change(3), h2.cfg_change(3), h3.cfg_change(3)) => {
+            assert!(c1.conf_id() == c2.conf_id());
+            assert!(c2.conf_id() == c3.conf_id());
+
+            for m in c1.members().into_iter()
+              .chain(c2.members().into_iter())
+              .chain(c3.members().into_iter())
+            {
+                if m.addr() == addr_in(net, 1) {
+                    assert_eq!(b"s1".as_ref(), &*m.metadata()["this key is s1"]);
+                } else if m.addr() == addr_in(net, 2) {
+                    assert_eq!(b"s2".as_ref(), &*m.metadata()["this key is s2"]);
+                } else {
+                    assert_eq!(b"s3-original".as_ref(), &*m.metadata()["this key is s3"]);
+                }
+            }
+        }
+    }
+
+    // re-create s3 from scratch, with a new uuid and different metadata
+    let (mut h3, hs3) = cfg_handle();
+    let s3 = Mesh::low_latency()
+        .add_mesh_service(hs3)
+        .add_metadata(vec![("this key is s3".to_owned(), b"s3-modified".to_vec())])
+        .join_seed(addr_in(net, 1), false)
+        .serve(addr_in(net, 3));
+
+    // wait for the new s3 to rejoin
+    select! {
+        e = &mut s1 => panic!("s1 exited with {:?}", e),
+        e = &mut s2 => panic!("s2 exited with {:?}", e),
+        e = s3 => panic!("s3 exited with {:?}", e),
+
+        (c1, c2, c3) = join3(h1.cfg_change(3), h2.cfg_change(3), h3.cfg_change(3)) => {
+            assert!(c1.conf_id() == c2.conf_id());
+            assert!(c2.conf_id() == c3.conf_id());
+
+            for m in c1.members().into_iter()
+              .chain(c2.members().into_iter())
+              .chain(c3.members().into_iter())
+            {
+                if m.addr() == addr_in(net, 1) {
+                    assert_eq!(b"s1".as_ref(), &*m.metadata()["this key is s1"]);
+                } else if m.addr() == addr_in(net, 2) {
+                    assert_eq!(b"s2".as_ref(), &*m.metadata()["this key is s2"]);
+                } else {
+                    assert_eq!(b"s3-modified".as_ref(), &*m.metadata()["this key is s3"]);
+                }
+            }
+        }
+    }
+}
