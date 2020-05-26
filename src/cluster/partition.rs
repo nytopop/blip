@@ -133,7 +133,7 @@ impl<St: Strategy> Cluster<St> {
         let cut = MultiNodeCut {
             skipped: 0,
             local_addr: self.addr,
-            conf_id: state.refresh_config(),
+            conf_id: state.rehash_config(),
             degraded: false,
             members: members.clone(),
             joined: members,
@@ -200,7 +200,7 @@ impl<St: Strategy> Cluster<St> {
             skipped: 0,
             local_addr: self.addr,
             degraded: !state.nodes.contains(&self.local_node()),
-            conf_id: state.refresh_config(),
+            conf_id: state.rehash_config(),
             members: members.into(),
             joined: joined.into(),
             kicked: vec![].into(),

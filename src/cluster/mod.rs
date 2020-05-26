@@ -649,7 +649,7 @@ impl<St: partition::Strategy> Cluster<St> {
             skipped: 0,
             local_addr: self.addr,
             degraded: !state.nodes.contains(&local_node),
-            conf_id: state.refresh_config(),
+            conf_id: state.rehash_config(),
             members: members.into(),
             joined: joined.into(),
             kicked: kicked.into(),
@@ -1127,7 +1127,7 @@ impl State {
     }
 
     /// Re-hash the active configuration, returning (and setting) its id.
-    fn refresh_config(&mut self) -> u64 {
+    fn rehash_config(&mut self) -> u64 {
         let mut h = FnvHasher::default();
 
         self.nodes.iter().for_each(|e| e.hash(&mut h));
