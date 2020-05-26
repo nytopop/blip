@@ -18,7 +18,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 full    = ["cache"]
-cache   = ["cache_2q", "consistent_hash_ring", "once_cell"]
+cache   = ["consistent_hash_ring", "cache_2q", "once_cell"]
 
 [build-dependencies]
 tonic-build = { version = "0.2.0", default-features = false, features = ["transport", "prost"] }
@@ -27,18 +27,18 @@ tonic-build = { version = "0.2.0", default-features = false, features = ["transp
 prost     = "0.6.1"
 bytes     = "0.5.4"
 http      = "0.2.1"
-tracing   = "0.1.13"
-fnv       = "1.0.6"
+tracing   = "0.1.14"
+fnv       = "1.0.7"
 rand      = "0.7.3"
 tonic     = { version = "0.2.1" , features = ["transport", "tls"] }
-futures   = { version = "0.3.4" , features = ["alloc"] }
+futures   = { version = "0.3.5" , features = ["alloc"] }
 tokio     = { version = "0.2.21", features = ["sync", "rt-threaded", "time", "macros"] }
 thiserror = "1.0.19"
 log       = "0.4.8"
 
-# cache
-cache_2q             = { version = "0.10.0", optional = true }
+# service-specific deps
 consistent_hash_ring = { version = "0.7.1" , optional = true }
+cache_2q             = { version = "0.10.0", optional = true }
 once_cell            = { version = "1.4.0" , optional = true }
 
 [dev-dependencies]
