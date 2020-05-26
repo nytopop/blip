@@ -93,9 +93,8 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
 
         let state = self.state.read().await;
 
-        if !state.nodes.contains(&sender) {
-            state.verify_unused_uuid(&uuid)?;
-        }
+        state.verify_unused_host(&sender)?;
+        state.verify_unused_uuid(&uuid)?;
 
         let resp = PreJoinResp {
             sender: self.local_node(),
@@ -119,15 +118,9 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         let mut state = self.state.write().await;
 
         state.verify_config(conf_id)?;
-
-        let local_node = self.local_node();
-
-        if state.nodes.contains(&sender) {
-            return Ok(Response::new(state.join_response(local_node)));
-        }
-
+        state.verify_unused_host(&sender)?;
         state.verify_unused_uuid(&uuid)?;
-        state.verify_ring(&local_node, &sender, ring)?;
+        state.verify_ring(&self.local_node(), &sender, ring)?;
 
         self.enqueue_edge(&mut state, Edge {
             node: sender.clone(),
@@ -163,7 +156,7 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
         state.verify_config(conf_id)?;
 
         if state.fpx_announced {
-            return Err(Status::aborted("fast paxos round has already begun"));
+            return Err(Status::aborted("already announced fast paxos round"));
         }
 
         (edges.iter())
@@ -449,17 +442,14 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     }
 
     /// Handle a fault-detection probe message.
-    async fn probe(&self, _: Request<ProbeReq>) -> GrpcResponse<ProbeResp> {
-        #[rustfmt::skip]
-        let State { conf_id, ref nodes, .. } = *self.state.read().await;
+    async fn probe(&self, _: Request<Ack>) -> GrpcResponse<Ack> {
+        let State { ref nodes, .. } = *self.state.read().await;
 
-        let status = if nodes.contains(&self.local_node()) {
-            NodeStatus::Healthy
-        } else {
-            NodeStatus::Degraded
-        } as i32;
+        if !nodes.contains(&self.local_node()) {
+            return Err(Status::unavailable("degraded"));
+        }
 
-        Ok(Response::new(ProbeResp { status, conf_id }))
+        Ok(Response::new(Ack {}))
     }
 }
 
@@ -532,13 +522,13 @@ impl<St: partition::Strategy> Cluster<St> {
     async fn spin_fd_probes(self: &Arc<Self>) {
         let (conf_id, mut subjects) = async {
             #[derive(Default)]
-            struct Status {
+            struct Subject {
                 rings: Vec<u64>,
                 faults: usize,
             }
 
             let state = self.state.read().await;
-            let mut subjects: HashMap<_, Status> = HashMap::with_capacity(self.cfg.k);
+            let mut subjects: HashMap<_, Subject> = HashMap::with_capacity(self.cfg.k);
 
             // we might have been assigned the same subject on multiple rings, so we use
             // a hashmap keyed by subject to deduplicate our outgoing probes.
@@ -599,11 +589,13 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
+    /// Probe a cluster member. Returns `Err` if the probe times out, fails, or the remote
+    /// indicates that they are degraded.
     async fn probe_member(&self, endpoint: Endpoint) -> Result<Endpoint, Endpoint> {
         let send_probe = timeout(self.cfg.fd_timeout, async {
             let e = self.resolve_endpoint(&endpoint).ok()?;
             let mut c = MembershipClient::connect(e).await.ok()?;
-            c.probe(ProbeReq {}).await.ok()
+            c.probe(Ack {}).await.ok()
         });
 
         match send_probe.await.ok().flatten() {
@@ -944,48 +936,54 @@ pub(crate) struct State {
     px_p1bs: Vec<Phase1bReq>,
 }
 
+#[inline]
+fn err_when<F: FnOnce() -> Status>(cond: bool, err: F) -> Grpc<()> {
+    if cond {
+        Err(err())
+    } else {
+        Ok(())
+    }
+}
+
 impl State {
+    /// Verify that `host` is not already a member in the active configuration.
+    fn verify_unused_host(&self, host: &Endpoint) -> Grpc<()> {
+        err_when(self.nodes.contains(host), || {
+            Status::already_exists("host already exists")
+        })
+    }
+
     /// Verify that `uuid` has not yet been used by any node in the active configuration.
     fn verify_unused_uuid(&self, uuid: &NodeId) -> Grpc<()> {
-        if self.uuids.contains(uuid) {
-            Err(Status::already_exists("uuid already exists"))
-        } else {
-            Ok(())
-        }
+        err_when(self.uuids.contains(uuid), || {
+            Status::already_exists("uuid already exists")
+        })
     }
 
     /// Verify that `src` is the `ring`th observer of `dst`.
     fn verify_ring(&self, src: &Endpoint, dst: &Endpoint, ring: u64) -> Grpc<()> {
-        if (self.nodes.predecessors(dst))
-            .nth(ring.try_into().unwrap())
-            .filter(|e| *e == src)
-            .is_none()
-        {
-            Err(Status::invalid_argument("invalid ring number"))
-        } else {
-            Ok(())
-        }
+        err_when(
+            self.nodes
+                .predecessors(dst)
+                .nth(ring.try_into().unwrap())
+                .filter(|e| *e == src)
+                .is_none(),
+            || Status::invalid_argument("invalid ring number"),
+        )
     }
 
     /// Verify that `sender` is a member of the active configuration.
     fn verify_sender(&self, sender: &Endpoint) -> Grpc<()> {
-        if !self.nodes.contains(sender) {
-            Err(Status::unauthenticated(format!(
-                "sender {:?} isn't a cluster member",
-                sender
-            )))
-        } else {
-            Ok(())
-        }
+        err_when(!self.nodes.contains(sender), || {
+            Status::unauthenticated(format!("sender {:?} isn't a cluster member", sender))
+        })
     }
 
     /// Verify that `conf_id` refers to the active configuration.
     fn verify_config(&self, conf_id: u64) -> Grpc<()> {
-        if self.conf_id != conf_id {
-            Err(Status::aborted("mismatched configuration id"))
-        } else {
-            Ok(())
-        }
+        err_when(self.conf_id != conf_id, || {
+            Status::aborted("mismatched configuration id")
+        })
     }
 
     /// Verify that `edge` doesn't violate any protocol invariants.

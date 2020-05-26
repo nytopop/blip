@@ -28,7 +28,7 @@ service Membership {
 
 	rpc Broadcast(BroadcastReq) returns (Ack);
 
-	rpc Probe(ProbeReq) returns (ProbeResp);
+	rpc Probe(Ack) returns (Ack);
 }
 
 // A listening address.
@@ -201,23 +201,4 @@ message BroadcastReq {
 		Phase2aReq Phase2a = 7;
 		Phase2bReq Phase2b = 8;
 	}
-}
-
-// A probe request.
-message ProbeReq {}
-
-// A probe response.
-message ProbeResp {
-	// Status of the node being probed.
-	required NodeStatus status = 1;
-	// Configuration id of the node being probed.
-	required uint64 conf_id = 2;
-}
-
-// Status of a node.
-enum NodeStatus {
-	// Node is healthy.
-	HEALTHY = 0;
-	// Node is degraded (not part of its last-seen configuration).
-	DEGRADED = 1;
 }
