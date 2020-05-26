@@ -27,7 +27,7 @@ use proto::{
 
 use fnv::FnvHasher;
 use futures::{
-    future::TryFutureExt,
+    future::{join, FutureExt, TryFutureExt},
     stream::{FuturesUnordered, StreamExt},
 };
 use log::{error, info, warn};
@@ -46,7 +46,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::{
-    join, select,
+    select,
     sync::{broadcast, oneshot, RwLock},
     task,
     time::{delay_for, timeout},
@@ -453,6 +453,12 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     }
 }
 
+struct Subject {
+    node: Endpoint,
+    rings: Vec<u64>,
+    faults: usize,
+}
+
 impl<St: partition::Strategy> Cluster<St> {
     pub(crate) fn new(cfg: Config<St>, addr: SocketAddr) -> Self {
         let state = Arc::new(RwLock::new(State {
@@ -510,6 +516,7 @@ impl<St: partition::Strategy> Cluster<St> {
         Endpoint::from(self.addr).tls(self.cfg.server_tls)
     }
 
+    /// Run the fault detector until the cluster is brought down.
     pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> cut::Result {
         loop {
             select! {
@@ -519,24 +526,26 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
+    /// Spin the fault detector until the next view-change proposal is accepted.
     async fn spin_fd_probes(self: &Arc<Self>) {
         let (conf_id, mut subjects) = async {
-            #[derive(Default)]
-            struct Subject {
-                rings: Vec<u64>,
-                faults: usize,
-            }
-
             let state = self.state.read().await;
-            let mut subjects: HashMap<_, Subject> = HashMap::with_capacity(self.cfg.k);
+            let mut subjects: Vec<Subject> = Vec::with_capacity(self.cfg.k);
 
-            // we might have been assigned the same subject on multiple rings, so we use
-            // a hashmap keyed by subject to deduplicate our outgoing probes.
+            // we might have been assigned the same subject on multiple rings, so we dedupe
+            // by subject and track which rings we're authoritative over.
             for (ring, subject) in (state.nodes.successors(&self.local_node()))
                 .cloned()
                 .enumerate()
             {
-                subjects.entry(subject).or_default().rings.push(ring as u64);
+                match subjects.binary_search_by_key(&&subject, |s| &s.node) {
+                    Err(i) => subjects.insert(i, Subject {
+                        node: subject,
+                        rings: vec![ring as u64],
+                        faults: 0,
+                    }),
+                    Ok(at) => subjects[at].rings.push(ring as u64),
+                }
             }
 
             (state.conf_id, subjects)
@@ -545,42 +554,29 @@ impl<St: partition::Strategy> Cluster<St> {
 
         loop {
             // start sending off probes, each of which times out after fd_timeout.
-            let probes = (subjects.keys().cloned())
-                .map(|e| self.probe_member(e))
+            let probes = (subjects.iter_mut())
+                .map(|s| self.probe_subject(s))
                 .collect::<FuturesUnordered<_>>()
-                .collect::<Vec<_>>();
+                .for_each(|_| async {});
 
-            // wait for all probes to finish (concurrently), and for fd_timeout to elapse.
-            // this caps the rate at which subjects are probed to k per fd_timeout.
-            for result in join![delay_for(self.cfg.fd_timeout), probes].1 {
-                match result {
-                    // probe succeeded, so reset.
-                    Ok(e) => subjects.get_mut(&e).unwrap().faults = 0,
-                    // probe failed, so increment.
-                    Err(e) => subjects.get_mut(&e).unwrap().faults += 1,
-                }
-            }
+            // wait for all probes to finish, and for fd_timeout to elapse. this caps the
+            // rate at which subjects are probed to k per fd_timeout.
+            let mut state = join(delay_for(self.cfg.fd_timeout), probes)
+                .then(|_| self.state.write())
+                .await;
 
-            // NOTE: here be dragons. for some incomprehensible reason, constructing the
-            // 'faulted' iterator before this await point produces compiler errors like:
-            //
-            //     `implementation of `std::iter::Iterator` is not general enough`
-            //
-            // way out in the integration tests, but otherwise compiles fine. this is some
-            // spooky api breakage at a distance.
-            let mut state = self.state.write().await;
-
-            // if a there's been a view-change, we need to reload the subjects hashmap. most
-            // of the time we'll instead be pre-empted and cancelled before locking (during
-            // the probe).
+            // if a there's been a view-change, we need to reload subjects as they might
+            // have become invalidated. most of the time we'll instead be pre-empted and
+            // cancelled before locking (during the probe).
             if state.conf_id != conf_id {
                 break;
             }
 
             // subjects are marked as faulted if they failed fd_strikes successive probes.
             let faulted = (subjects.iter_mut())
-                .filter(|(_, s)| s.faults >= self.cfg.fd_strikes)
-                .flat_map(|(e, s)| {
+                .filter(|s| s.faults >= self.cfg.fd_strikes)
+                .flat_map(|s| {
+                    let e = &s.node;
                     s.faults = 0;
                     s.rings.iter().map(move |ring| Edge::down(e.clone(), *ring))
                 });
@@ -589,18 +585,18 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
-    /// Probe a cluster member. Returns `Err` if the probe times out, fails, or the remote
-    /// indicates that they are degraded.
-    async fn probe_member(&self, endpoint: Endpoint) -> Result<Endpoint, Endpoint> {
+    /// Probe a subject, modifying its successive `faults` count appropriately upon success
+    /// or failure.
+    async fn probe_subject(&self, subject: &mut Subject) {
         let send_probe = timeout(self.cfg.fd_timeout, async {
-            let e = self.resolve_endpoint(&endpoint).ok()?;
+            let e = self.resolve_endpoint(&subject.node).ok()?;
             let mut c = MembershipClient::connect(e).await.ok()?;
             c.probe(Ack {}).await.ok()
         });
 
         match send_probe.await.ok().flatten() {
-            Some(_) => Ok(endpoint),
-            _ => Err(endpoint),
+            Some(_) => subject.faults = 0,
+            None => subject.faults += 1,
         }
     }
 
