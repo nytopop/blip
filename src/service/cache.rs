@@ -36,6 +36,7 @@ use crate::{ExposedService, MeshService, MultiNodeCut, Subscription};
 use bytes::Bytes;
 use cache_2q::Cache as Cache2q;
 use consistent_hash_ring::Ring;
+use futures::future::TryFutureExt;
 use once_cell::sync::OnceCell;
 use proto::{cache_client::CacheClient, cache_server::CacheServer, Key, Value};
 use rand::{thread_rng, Rng};
@@ -265,9 +266,8 @@ impl Cache {
         // check if key hashes onto another node.
         if let Some(shard) = self.lookup_shard(&key).await {
             let mut c = CacheClient::connect(shard)
-                .await
-                .map_err(|e| format!("{}", e))
-                .map_err(Status::unavailable)?;
+                .map_err(|e| Status::unavailable(e.to_string()))
+                .await?;
 
             let val = c.get(Key { key: key.to_vec() }).await?;
             let buf = Bytes::from(val.into_inner().buf);
