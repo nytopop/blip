@@ -971,7 +971,7 @@ impl State {
     /// Verify that `sender` is a member of the active configuration.
     fn verify_sender(&self, sender: &Endpoint) -> Grpc<()> {
         err_when(!self.nodes.contains(sender), || {
-            Status::unauthenticated(format!("sender {:?} isn't a cluster member", sender))
+            Status::aborted(format!("{} not in configuration", sender))
         })
     }
 

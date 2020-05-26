@@ -10,6 +10,7 @@ use std::{
     cmp,
     collections::HashMap,
     convert::{TryFrom, TryInto},
+    fmt,
     hash::{Hash, Hasher},
     net::{IpAddr, SocketAddr},
     ops::{Deref, DerefMut},
@@ -130,6 +131,15 @@ impl From<(SocketAddr, bool)> for Endpoint {
     #[inline]
     fn from((addr, tls): (SocketAddr, bool)) -> Self {
         Self::from(addr).tls(tls)
+    }
+}
+
+impl fmt::Display for Endpoint {
+    fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match SocketAddr::try_from(self) {
+            Ok(s) => write!(w, "{}", s),
+            Err(e) => write!(w, "{}", e),
+        }
     }
 }
 
