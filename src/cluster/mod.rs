@@ -453,12 +453,6 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     }
 }
 
-struct Subject {
-    node: Endpoint,
-    rings: Vec<u64>,
-    faults: usize,
-}
-
 impl<St: partition::Strategy> Cluster<St> {
     pub(crate) fn new(cfg: Config<St>, addr: SocketAddr) -> Self {
         let state = Arc::new(RwLock::new(State {
@@ -529,6 +523,12 @@ impl<St: partition::Strategy> Cluster<St> {
     /// Spin the fault detector until the next view-change proposal is accepted.
     async fn spin_fd_probes(self: &Arc<Self>) {
         let (conf_id, mut subjects) = async {
+            struct Subject {
+                node: Endpoint,
+                rings: Vec<u64>,
+                faults: usize,
+            }
+
             let state = self.state.read().await;
             let mut subjects: Vec<Subject> = Vec::with_capacity(self.cfg.k);
 
@@ -555,7 +555,7 @@ impl<St: partition::Strategy> Cluster<St> {
         loop {
             // start sending off probes, each of which times out after fd_timeout.
             let probes = (subjects.iter_mut())
-                .map(|s| self.probe_subject(s))
+                .map(|s| self.probe_subject(&s.node, &mut s.faults))
                 .collect::<FuturesUnordered<_>>()
                 .for_each(|_| async {});
 
@@ -585,18 +585,18 @@ impl<St: partition::Strategy> Cluster<St> {
         }
     }
 
-    /// Probe a subject, modifying its successive `faults` count appropriately upon success
+    /// Probe a subject, modifying the successive `faults` counter appropriately upon success
     /// or failure.
-    async fn probe_subject(&self, subject: &mut Subject) {
+    async fn probe_subject(&self, subject: &Endpoint, faults: &mut usize) {
         let send_probe = timeout(self.cfg.fd_timeout, async {
-            let e = self.resolve_endpoint(&subject.node).ok()?;
+            let e = self.resolve_endpoint(subject).ok()?;
             let mut c = MembershipClient::connect(e).await.ok()?;
             c.probe(Ack {}).await.ok()
         });
 
         match send_probe.await.ok().flatten() {
-            Some(_) => subject.faults = 0,
-            None => subject.faults += 1,
+            Some(_) => *faults = 0,
+            None => *faults += 1,
         }
     }
 
