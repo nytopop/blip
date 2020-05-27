@@ -36,7 +36,6 @@ use crate::{ExposedService, MeshService, MultiNodeCut, Subscription};
 use bytes::Bytes;
 use cache_2q::Cache as Cache2q;
 use consistent_hash_ring::Ring;
-use futures::future::TryFutureExt;
 use once_cell::sync::OnceCell;
 use proto::{cache_client::CacheClient, cache_server::CacheServer, Key, Value};
 use rand::{thread_rng, Rng};
@@ -47,7 +46,10 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, Semaphore};
-use tonic::{transport::Endpoint, Request, Response, Status};
+use tonic::{
+    transport::{Channel, Error},
+    Request, Response, Status,
+};
 
 /// A type that can produce a binary value, given a key.
 #[crate::async_trait]
@@ -265,9 +267,9 @@ impl Cache {
 
         // check if key hashes onto another node.
         if let Some(shard) = self.lookup_shard(&key).await {
-            let mut c = CacheClient::connect(shard)
+            let mut c = shard
                 .map_err(|e| Status::unavailable(e.to_string()))
-                .await?;
+                .map(CacheClient::new)?;
 
             let val = c.get(Key { key: key.to_vec() }).await?;
             let buf = Bytes::from(val.into_inner().buf);
@@ -297,19 +299,24 @@ impl Cache {
     /// The use of a consistent hash ring means key distribution remains relatively stable
     /// in the event of cluster membership changes.
     #[inline]
-    async fn lookup_shard(&self, key: &[u8]) -> Option<Endpoint> {
-        let r = self.0.remote.read().await;
+    async fn lookup_shard(&self, key: &[u8]) -> Option<Result<Channel, Error>> {
+        let connection = async {
+            let r = self.0.remote.read().await;
 
-        // if there's no configuration, we're in standalone mode or the mesh hasn't yet
-        // bootstrapped; in either case, assume we're the owner of key.
-        let cut = r.config.as_ref()?;
+            // if there's no configuration, we're in standalone mode or the mesh hasn't yet
+            // bootstrapped; in either case, assume we're the owner of key.
+            let cut = r.config.as_ref()?;
 
-        match *r.shards.try_get(key)? {
-            // if the shard's addr is our addr, it's ours.
-            s if s == cut.local_addr() => None,
-            // otherwise it's some other node's.
-            s => Some(Endpoint::from(&cut[s])),
+            match *r.shards.try_get(key)? {
+                // if the shard's addr is our addr, it's ours.
+                s if s == cut.local_addr() => None,
+                // otherwise it's some other node's.
+                s => Some(cut[s].channel()),
+            }
         }
+        .await?;
+
+        Some(connection.await)
     }
 }
 
