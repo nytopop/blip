@@ -11,6 +11,7 @@ use rand::{thread_rng, Rng};
 use std::{
     collections::HashMap,
     convert::TryInto,
+    future::Future,
     net::SocketAddr,
     ops::Index,
     result,
@@ -19,9 +20,9 @@ use std::{
 use thiserror::Error;
 use tokio::sync::{
     broadcast::{Receiver, RecvError},
-    RwLock,
+    Mutex, RwLock,
 };
-use tonic::transport::{self, ClientTlsConfig};
+use tonic::transport::{self, Channel, ClientTlsConfig};
 
 pub(crate) type Result = result::Result<(), Closed>;
 
@@ -182,32 +183,54 @@ impl MultiNodeCut {
 ///
 /// This is meant to be used via its [From] impl for [Endpoint](transport::Endpoint), which
 /// will have tls settings configured for convenience.
+///
+/// Alternatively, a channel shared by all holders of a [Member] can be obtained by calling
+/// [channel][Self::channel].
 #[derive(Clone, Debug)]
 pub struct Member {
-    pub(crate) addr: SocketAddr,
-    pub(crate) tls: Option<Arc<ClientTlsConfig>>,
-    pub(crate) meta: Metadata,
+    addr: SocketAddr,
+    tls: Option<Arc<ClientTlsConfig>>,
+    meta: Metadata,
+    chan: Arc<Mutex<LazyChannel>>,
 }
 
 impl From<&Member> for proto::Endpoint {
+    #[inline]
     fn from(Member { addr, tls, .. }: &Member) -> Self {
         Self::from(*addr).tls(tls.is_some())
     }
 }
 
 impl From<&Member> for transport::Endpoint {
+    #[inline]
     fn from(Member { addr, tls, .. }: &Member) -> Self {
-        match tls.as_deref().cloned() {
-            Some(tls) => format!("https://{}", addr)
-                .try_into()
-                .map(|e: Self| e.tls_config(tls)),
-            None => format!("http://{}", addr).try_into(),
-        }
-        .unwrap()
+        endpoint(*addr, tls.as_deref())
     }
 }
 
+#[inline]
+fn endpoint(addr: SocketAddr, tls: Option<&ClientTlsConfig>) -> transport::Endpoint {
+    match tls.cloned() {
+        Some(tls) => format!("https://{}", addr)
+            .try_into()
+            .map(|e: transport::Endpoint| e.tls_config(tls)),
+        None => format!("http://{}", addr).try_into(),
+    }
+    .unwrap()
+}
+
 impl Member {
+    pub(crate) fn new(addr: SocketAddr, tls: Option<Arc<ClientTlsConfig>>, meta: Metadata) -> Self {
+        let chan = Arc::new(Mutex::new(LazyChannel {
+            endpoint: endpoint(addr, tls.as_deref()),
+            c: None,
+        }));
+
+        #[rustfmt::skip]
+        let m = Self { addr, tls, meta, chan };
+        m
+    }
+
     /// Returns the member's socket address.
     pub fn addr(&self) -> SocketAddr {
         self.addr
@@ -223,4 +246,33 @@ impl Member {
     pub fn metadata(&self) -> &HashMap<String, Vec<u8>> {
         &self.meta.keys
     }
+
+    /// Returns a grpc channel backed by this member. The same channel (or a clone) will be
+    /// provided to all callers, meaning there won't be any additional handshaking overhead
+    /// if this method is called more than once.
+    ///
+    /// Note that the returned future does not borrow from `self`, and remains valid even if
+    /// `self` is dropped.
+    pub fn channel(&self) -> impl Future<Output = result::Result<Channel, transport::Error>> {
+        channel(Arc::clone(&self.chan))
+    }
+}
+
+async fn channel(lazy: Arc<Mutex<LazyChannel>>) -> result::Result<Channel, transport::Error> {
+    let LazyChannel { endpoint, c } = &mut *lazy.lock().await;
+
+    if let Some(c) = c {
+        return Ok(c.clone());
+    }
+
+    let ch = endpoint.connect().await?;
+    *c = Some(ch.clone());
+
+    Ok(ch)
+}
+
+#[derive(Debug)]
+struct LazyChannel {
+    endpoint: transport::Endpoint,
+    c: Option<transport::Channel>,
 }

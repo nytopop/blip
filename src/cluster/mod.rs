@@ -671,7 +671,7 @@ impl<St: partition::Strategy> Cluster<St> {
 
         let tls = self.get_client_tls(peer.tls);
 
-        Ok(Member { addr, tls, meta })
+        Ok(Member::new(addr, tls, meta))
     }
 
     /// Resolve a [Member] without performing a metadata lookup.
@@ -681,7 +681,7 @@ impl<St: partition::Strategy> Cluster<St> {
         let addr: SocketAddr = peer.try_into()?;
         let tls = self.get_client_tls(peer.tls);
 
-        Ok(Member { addr, tls, meta })
+        Ok(Member::new(addr, tls, meta))
     }
 
     /// Get a client tls config, if `enabled`.
