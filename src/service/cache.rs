@@ -126,7 +126,7 @@ impl<S: ?Sized> Clone for Cache<S> {
     }
 }
 
-const META_KEY: &str = "blip.cache";
+const CACHE: &str = "blip.cache";
 
 #[crate::async_trait]
 impl MeshService for Cache {
@@ -135,7 +135,7 @@ impl MeshService for Cache {
             let mut r = self.0.remote.write().await;
 
             r.shards.clear();
-            r.shards.extend(cut.with_meta(META_KEY).map(|m| m.0.addr()));
+            r.shards.extend(cut.with_meta(CACHE).map(|m| m.0.addr()));
             r.config = Some(cut);
         }
     }
@@ -144,7 +144,7 @@ impl MeshService for Cache {
 impl ExposedService for Cache {
     #[inline]
     fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, keys: &mut K) {
-        keys.extend(vec![(META_KEY.to_owned(), vec![])]);
+        keys.extend(vec![(CACHE.to_owned(), vec![])]);
     }
 
     type Service = CacheServer<Self>;
