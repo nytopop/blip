@@ -220,11 +220,9 @@ fn endpoint(addr: SocketAddr, tls: Option<&ClientTlsConfig>) -> transport::Endpo
 }
 
 impl Member {
+    #[inline]
     pub(crate) fn new(addr: SocketAddr, tls: Option<Arc<ClientTlsConfig>>, meta: Metadata) -> Self {
-        let chan = Arc::new(Mutex::new(LazyChannel {
-            endpoint: endpoint(addr, tls.as_deref()),
-            c: None,
-        }));
+        let chan = Arc::new(Mutex::new(endpoint(addr, tls.as_deref()).into()));
 
         #[rustfmt::skip]
         let m = Self { addr, tls, meta, chan };
@@ -254,25 +252,37 @@ impl Member {
     /// Note that the returned future does not borrow from `self`, and remains valid even if
     /// `self` is dropped.
     pub fn channel(&self) -> impl Future<Output = result::Result<Channel, transport::Error>> {
-        channel(Arc::clone(&self.chan))
+        let lazy = Arc::clone(&self.chan);
+
+        async move {
+            let mut lz = lazy.lock().await;
+            lz.connect().await
+        }
     }
-}
-
-async fn channel(lazy: Arc<Mutex<LazyChannel>>) -> result::Result<Channel, transport::Error> {
-    let LazyChannel { endpoint, c } = &mut *lazy.lock().await;
-
-    if let Some(c) = c {
-        return Ok(c.clone());
-    }
-
-    let ch = endpoint.connect().await?;
-    *c = Some(ch.clone());
-
-    Ok(ch)
 }
 
 #[derive(Debug)]
 struct LazyChannel {
     endpoint: transport::Endpoint,
     c: Option<transport::Channel>,
+}
+
+impl From<transport::Endpoint> for LazyChannel {
+    #[inline]
+    fn from(endpoint: transport::Endpoint) -> Self {
+        Self { endpoint, c: None }
+    }
+}
+
+impl LazyChannel {
+    async fn connect(&mut self) -> result::Result<Channel, transport::Error> {
+        if let Some(ch) = &self.c {
+            return Ok(ch.clone());
+        }
+
+        let ch = self.endpoint.connect().await?;
+        self.c = Some(ch.clone());
+
+        Ok(ch)
+    }
 }
