@@ -170,10 +170,8 @@ impl MultiNodeCut {
     ///
     /// Executes in O(log n) time.
     pub fn lookup(&self, addr: SocketAddr) -> Option<&Member> {
-        let key = |s: SocketAddr| (s.ip(), s.port());
-
         self.members
-            .binary_search_by_key(&key(addr), |m| key(m.addr()))
+            .binary_search_by_key(&addr, |m| m.addr())
             .ok()
             .map(|i| &self.members[i])
     }

@@ -188,13 +188,13 @@ impl<St: Strategy> Cluster<St> {
             assert!(state.uuids.insert(uuid));
         }
 
-        joined.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+        joined.sort_by_key(|m| m.addr());
 
         let mut members: Vec<_> = (state.nodes.iter())
             .map(|node| self.resolve_member(&state, node).unwrap())
             .collect();
 
-        members.sort_by_key(|m| (m.addr().ip(), m.addr().port()));
+        members.sort_by_key(|m| m.addr());
 
         let cut = MultiNodeCut {
             skipped: 0,
