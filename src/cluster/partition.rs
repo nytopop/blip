@@ -23,50 +23,6 @@ use thiserror::Error;
 use tokio::time::{delay_for, timeout, Elapsed};
 use tonic::transport;
 
-mod private {
-    pub trait Sealed {}
-}
-
-/// A strategy to handle network partitions where the local member is ejected from an
-/// active cluster.
-///
-/// This trait is sealed against outside implementations.
-#[crate::async_trait]
-pub trait Strategy: private::Sealed + Default + Send + Sync + 'static {
-    // If this method exits, the mesh goes down with it (!).
-    #[doc(hidden)]
-    async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> cut::Result;
-}
-
-/// Rejoin the existing cluster through random healthy members.
-#[derive(Default)]
-pub struct Rejoin {}
-
-impl private::Sealed for Rejoin {}
-
-#[crate::async_trait]
-impl Strategy for Rejoin {
-    async fn handle_parts(node: Arc<Cluster<Self>>, mut cuts: Subscription) -> cut::Result {
-        node.initialize().await;
-
-        loop {
-            let cut = cuts.recv().await?;
-
-            if !cut.is_degraded() {
-                continue;
-            }
-
-            if cut.members().is_empty() {
-                node.initialize().await;
-                continue;
-            }
-
-            node.join_via_backoff(|| Cow::Owned(cut.random_member().into()))
-                .await;
-        }
-    }
-}
-
 #[derive(Debug, Error)]
 enum JoinError {
     #[error("timed out: {}", .0)]
@@ -94,7 +50,30 @@ enum GrpcError {
     Call(#[from] tonic::Status),
 }
 
-impl<St: Strategy> Cluster<St> {
+impl Cluster {
+    /// Handle network partitions where the local member is ejected from the cluster by rejoining
+    /// through random healthy members (from the last-seen cut), or bootstrapping if this node is
+    /// a seed node.
+    pub(crate) async fn handle_parts(self: Arc<Self>, mut cuts: Subscription) -> cut::Result {
+        self.initialize().await;
+
+        loop {
+            let cut = cuts.recv().await?;
+
+            if !cut.is_degraded() {
+                continue;
+            }
+
+            if cut.members().is_empty() {
+                self.initialize().await;
+                continue;
+            }
+
+            self.join_via_backoff(|| Cow::Owned(cut.random_member().into()))
+                .await;
+        }
+    }
+
     /// Initialize as if we just started up by attempting to join a seed node, or becoming
     /// a single node bootstrap cluster.
     async fn initialize(&self) {

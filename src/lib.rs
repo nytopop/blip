@@ -69,10 +69,7 @@ pub mod overlay;
 pub mod service;
 
 #[doc(inline)]
-pub use cluster::{
-    cut::{Member, MultiNodeCut, Subscription},
-    partition::Rejoin,
-};
+pub use cluster::cut::{Member, MultiNodeCut, Subscription};
 #[doc(inline)]
 pub use overlay::{ExposedService, Mesh, MeshService};
 

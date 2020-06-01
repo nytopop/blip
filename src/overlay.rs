@@ -7,7 +7,6 @@
 //! Batteries-included grpc service mesh.
 use super::cluster::{
     cut::{Closed, Subscription},
-    partition::{self, Rejoin},
     Cluster, Config,
 };
 
@@ -98,19 +97,18 @@ impl CutDetectorConfig {
 ///
 /// Most interaction with the membership state of an executing member occurs via services
 /// that implement the [MeshService] trait.
-pub struct Mesh<St, R> {
-    cfg: Config<St>,
+pub struct Mesh<R> {
+    cfg: Config,
     grpc: R,
     svcs: Vec<Box<dyn MeshService>>,
 }
 
-impl Default for Mesh<Rejoin, Server> {
+impl Default for Mesh<Server> {
     fn default() -> Self {
         let cd = CutDetectorConfig::new();
 
         Self {
             cfg: Config {
-                strategy: Default::default(),
                 lh: (cd.unstable_threshold, cd.stable_threshold),
                 k: cd.subjects_per_observer,
                 seed: None,
@@ -126,7 +124,7 @@ impl Default for Mesh<Rejoin, Server> {
     }
 }
 
-impl Mesh<Rejoin, Server> {
+impl Mesh<Server> {
     /// Create a new [Mesh] with the default configuration.
     #[inline]
     pub fn new() -> Self {
@@ -146,7 +144,7 @@ impl Mesh<Rejoin, Server> {
 }
 
 /// Methods for blip-specific membership protocol configuration.
-impl<St, R> Mesh<St, R> {
+impl<R> Mesh<R> {
     /// Configure the cut detector. All members of the mesh must have the same configuration.
     ///
     /// # Panics
@@ -188,22 +186,6 @@ impl<St, R> Mesh<St, R> {
         self
     }
 
-    /// Set the strategy with which to handle network partitions.
-    ///
-    /// See [partition] for possible options to use here.
-    // TODO: actually write different strategies, or remove the parameterization
-    pub fn part_strategy<_St: partition::Strategy>(self) -> Mesh<_St, R> {
-        let Mesh { cfg, grpc, svcs } = self;
-        let strategy = _St::default();
-
-        #[rustfmt::skip]
-        let Config { lh, k, seed, meta, server_tls, client_tls, fd_timeout, fd_strikes, .. } = cfg;
-        #[rustfmt::skip]
-        let cfg = Config { strategy, lh, k, seed, meta, server_tls, client_tls, fd_timeout, fd_strikes };
-
-        Mesh { cfg, grpc, svcs }
-    }
-
     /// Set a timeout for the fault detector. If a subject fails to respond to a probe within
     /// this amount of time (for `fault_strikes` successive attempts), it will be marked as
     /// faulty by the observer.
@@ -242,7 +224,7 @@ impl<St, R> Mesh<St, R> {
 }
 
 /// Methods that pass-through to [tonic::transport].
-impl<St: partition::Strategy> Mesh<St, Server> {
+impl Mesh<Server> {
     /// Configure TLS for this server.
     pub fn server_tls_config(mut self, tls_config: ServerTlsConfig) -> Self {
         self.cfg.server_tls = true;
@@ -315,7 +297,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
     /// Add a service `S` to the mesh. Any endpoints it exposes should use request paths
     /// namespaced by the [NamedService] implementation, so they can be routed alongside
     /// other services.
-    pub fn add_service<S>(self, svc: S) -> Mesh<St, Router<S::Service, Unimplemented>>
+    pub fn add_service<S>(self, svc: S) -> Mesh<Router<S::Service, Unimplemented>>
     where
         S: ExposedService + 'static,
         <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
@@ -363,8 +345,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
                     .err_into() => r,
             r = Arc::clone(&cluster).detect_faults(f_cuts)
                     .err_into() => r,
-            r = St::handle_parts(Arc::clone(&cluster), w_cuts)
-                    .err_into() => r,
+            r = cluster.handle_parts(w_cuts).err_into() => r,
         }
     }
 }
@@ -372,7 +353,7 @@ impl<St: partition::Strategy> Mesh<St, Server> {
 /// These methods are duplicated here because it isn't possible to be generic over [Server]
 /// and [Router] in the same impl block. The logic is equivalent to the counterparts above.
 #[doc(hidden)]
-impl<St: partition::Strategy, A, B> Mesh<St, Router<A, B>>
+impl<A, B> Mesh<Router<A, B>>
 where
     A: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>> + Clone + Send + 'static,
     A::Future: Send + 'static,
@@ -381,10 +362,7 @@ where
     B::Future: Send + 'static,
     B::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
 {
-    pub fn add_service<S>(
-        self,
-        svc: S,
-    ) -> Mesh<St, Router<S::Service, impl Service<HttpRequest<Body>>>>
+    pub fn add_service<S>(self, svc: S) -> Mesh<Router<S::Service, impl Service<HttpRequest<Body>>>>
     where
         S: ExposedService + 'static,
         <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
@@ -424,8 +402,7 @@ where
                     .err_into() => r,
             r = Arc::clone(&cluster).detect_faults(f_cuts)
                     .err_into() => r,
-            r = St::handle_parts(Arc::clone(&cluster), w_cuts)
-                    .err_into() => r,
+            r = cluster.handle_parts(w_cuts).err_into() => r,
         }
     }
 }

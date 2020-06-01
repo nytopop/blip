@@ -13,7 +13,7 @@
 //! [rapid]: https://arxiv.org/abs/1803.03620
 //! [fpx]: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
 pub mod cut;
-pub mod partition;
+mod partition;
 mod proto;
 
 use super::collections::{EventFilter, EventId, FreqSet, Tumbler};
@@ -57,9 +57,7 @@ use tonic::{
 };
 
 #[doc(hidden)]
-pub struct Config<St> {
-    #[allow(dead_code)]
-    pub(crate) strategy: St,
+pub struct Config {
     pub(crate) lh: (usize, usize),
     pub(crate) k: usize,
     pub(crate) seed: Option<Endpoint>,
@@ -74,15 +72,15 @@ type Grpc<T> = Result<T, Status>;
 type GrpcResponse<T> = Grpc<Response<T>>;
 
 #[doc(hidden)]
-pub struct Cluster<St> {
-    cfg: Config<St>,
+pub struct Cluster {
+    cfg: Config,
     addr: SocketAddr,
     state: Arc<RwLock<State>>,
     cuts: broadcast::Sender<MultiNodeCut>,
 }
 
 #[crate::async_trait]
-impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
+impl Membership for Arc<Cluster> {
     /// Handle a pre-join request (phase 1 of the join protocol).
     ///
     /// The only thing we need to do is inform the joiner about which nodes to contact in
@@ -453,8 +451,8 @@ impl<St: partition::Strategy> Membership for Arc<Cluster<St>> {
     }
 }
 
-impl<St: partition::Strategy> Cluster<St> {
-    pub(crate) fn new(cfg: Config<St>, addr: SocketAddr) -> Self {
+impl Cluster {
+    pub(crate) fn new(cfg: Config, addr: SocketAddr) -> Self {
         let state = Arc::new(RwLock::new(State {
             uuid: NodeId::generate(),
             conf_id: 0,
