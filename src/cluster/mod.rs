@@ -13,6 +13,7 @@
 //! [rapid]: https://arxiv.org/abs/1803.03620
 //! [fpx]: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
 pub mod cut;
+mod faultdetect;
 mod partition;
 mod proto;
 
@@ -26,10 +27,7 @@ use proto::{
 };
 
 use fnv::FnvHasher;
-use futures::{
-    future::{join, FutureExt, TryFutureExt},
-    stream::{FuturesUnordered, StreamExt},
-};
+use futures::future::TryFutureExt;
 use log::{error, info, warn};
 use rand::{thread_rng, Rng};
 use std::{
@@ -46,10 +44,9 @@ use std::{
 };
 use thiserror::Error;
 use tokio::{
-    select,
     sync::{broadcast, oneshot, RwLock},
     task,
-    time::{delay_for, timeout},
+    time::delay_for,
 };
 use tonic::{
     transport::{self, ClientTlsConfig},
@@ -506,96 +503,6 @@ impl Cluster {
     #[inline]
     fn local_node(&self) -> Endpoint {
         Endpoint::from(self.addr).tls(self.cfg.server_tls)
-    }
-
-    /// Run the fault detector until the cluster is brought down.
-    pub(crate) async fn detect_faults(self: Arc<Self>, mut cuts: Subscription) -> cut::Result {
-        loop {
-            select! {
-                _ = self.spin_fd_probes() => {}
-                cut = cuts.recv() => { cut?; }
-            }
-        }
-    }
-
-    /// Spin the fault detector until the next view-change proposal is accepted.
-    async fn spin_fd_probes(self: &Arc<Self>) {
-        let (conf_id, mut subjects) = async {
-            struct Subject {
-                node: Endpoint,
-                rings: Vec<u64>,
-                faults: usize,
-            }
-
-            let state = self.state.read().await;
-            let mut subjects: Vec<Subject> = Vec::with_capacity(self.cfg.k);
-
-            // we might have been assigned the same subject on multiple rings, so we dedupe
-            // by subject and track which rings we're authoritative over.
-            for (ring, subject) in (state.nodes.successors(&self.local_node()))
-                .cloned()
-                .enumerate()
-            {
-                match subjects.binary_search_by_key(&&subject, |s| &s.node) {
-                    Err(i) => subjects.insert(i, Subject {
-                        node: subject,
-                        rings: vec![ring as u64],
-                        faults: 0,
-                    }),
-                    Ok(at) => subjects[at].rings.push(ring as u64),
-                }
-            }
-
-            (state.conf_id, subjects)
-        }
-        .await;
-
-        loop {
-            // start sending off probes, each of which times out after fd_timeout.
-            let probes = (subjects.iter_mut())
-                .map(|s| self.probe_subject(&s.node, &mut s.faults))
-                .collect::<FuturesUnordered<_>>()
-                .for_each(|_| async {});
-
-            // wait for all probes to finish, and for fd_timeout to elapse. this caps the
-            // rate at which subjects are probed to k per fd_timeout.
-            let mut state = join(delay_for(self.cfg.fd_timeout), probes)
-                .then(|_| self.state.write())
-                .await;
-
-            // if a there's been a view-change, we need to reload subjects as they might
-            // have become invalidated. most of the time we'll instead be pre-empted and
-            // cancelled before locking (during the probe).
-            if state.conf_id != conf_id {
-                break;
-            }
-
-            // subjects are marked as faulted if they failed fd_strikes successive probes.
-            let faulted = (subjects.iter_mut())
-                .filter(|s| s.faults >= self.cfg.fd_strikes)
-                .flat_map(|s| {
-                    let e = &s.node;
-                    s.faults = 0;
-                    s.rings.iter().map(move |ring| Edge::down(e.clone(), *ring))
-                });
-
-            self.enqueue_edges(&mut *state, faulted);
-        }
-    }
-
-    /// Probe a subject, modifying the successive `faults` counter appropriately upon success
-    /// or failure.
-    async fn probe_subject(&self, subject: &Endpoint, faults: &mut usize) {
-        let send_probe = timeout(self.cfg.fd_timeout, async {
-            let e = self.resolve_endpoint(subject).ok()?;
-            let mut c = MembershipClient::connect(e).await.ok()?;
-            c.probe(Ack {}).await.ok()
-        });
-
-        match send_probe.await.ok().flatten() {
-            Some(_) => *faults = 0,
-            None => *faults += 1,
-        }
     }
 
     /// Resolve an `Endpoint` to a `transport::Endpoint`, applying the configured client TLS
