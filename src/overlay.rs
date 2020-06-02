@@ -329,23 +329,25 @@ impl Mesh<Server> {
     where F: Future<Output = ()> + Send {
         let cluster = Arc::new(Cluster::new(self.cfg, addr));
 
-        let f_cuts = cluster.subscribe();
-        let w_cuts = cluster.subscribe();
-
-        let svcs: FuturesUnordered<_> = (self.svcs)
-            .into_iter()
-            .map(|s| s.accept(cluster.subscribe()))
-            .collect();
-
         select! {
-            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
+            r = self.svcs.into_iter()
+                    .map(|s| s.accept(cluster.subscribe()))
+                    .collect::<FuturesUnordered<_>>()
+                    .for_each(|_| async {})
+                    .then(|_| pending()) => r,
+
+            r = Arc::clone(&cluster)
+                    .detect_faults(cluster.subscribe())
+                    .err_into() => r,
+
+            r = Arc::clone(&cluster)
+                    .handle_parts(cluster.subscribe())
+                    .err_into() => r,
+
             r = self.grpc
-                    .add_service(Arc::clone(&cluster).into_service())
+                    .add_service(cluster.into_service())
                     .serve_with_shutdown(addr, signal)
                     .err_into() => r,
-            r = Arc::clone(&cluster).detect_faults(f_cuts)
-                    .err_into() => r,
-            r = cluster.handle_parts(w_cuts).err_into() => r,
         }
     }
 }
@@ -386,23 +388,25 @@ where
     where F: Future<Output = ()> + Send {
         let cluster = Arc::new(Cluster::new(self.cfg, addr));
 
-        let f_cuts = cluster.subscribe();
-        let w_cuts = cluster.subscribe();
-
-        let svcs: FuturesUnordered<_> = (self.svcs)
-            .into_iter()
-            .map(|s| s.accept(cluster.subscribe()))
-            .collect();
-
         select! {
-            r = svcs.for_each(|_| async {}).then(|_| pending()) => r,
+            r = self.svcs.into_iter()
+                    .map(|s| s.accept(cluster.subscribe()))
+                    .collect::<FuturesUnordered<_>>()
+                    .for_each(|_| async {})
+                    .then(|_| pending()) => r,
+
+            r = Arc::clone(&cluster)
+                    .detect_faults(cluster.subscribe())
+                    .err_into() => r,
+
+            r = Arc::clone(&cluster)
+                    .handle_parts(cluster.subscribe())
+                    .err_into() => r,
+
             r = self.grpc
-                    .add_service(Arc::clone(&cluster).into_service())
+                    .add_service(cluster.into_service())
                     .serve_with_shutdown(addr, signal)
                     .err_into() => r,
-            r = Arc::clone(&cluster).detect_faults(f_cuts)
-                    .err_into() => r,
-            r = cluster.handle_parts(w_cuts).err_into() => r,
         }
     }
 }
