@@ -53,23 +53,21 @@ use tonic::{
     Code, Request, Response, Status,
 };
 
-#[doc(hidden)]
-pub struct Config {
-    pub(crate) lh: (usize, usize),
-    pub(crate) k: usize,
-    pub(crate) seed: Option<Endpoint>,
-    pub(crate) meta: Metadata,
-    pub(crate) server_tls: bool,
-    pub(crate) client_tls: Option<Arc<ClientTlsConfig>>,
-    pub(crate) fd_timeout: Duration,
-    pub(crate) fd_strikes: usize,
+pub(crate) struct Config {
+    pub lh: (usize, usize),
+    pub k: usize,
+    pub seed: Option<Endpoint>,
+    pub meta: Metadata,
+    pub server_tls: bool,
+    pub client_tls: Option<Arc<ClientTlsConfig>>,
+    pub fd_timeout: Duration,
+    pub fd_strikes: usize,
 }
 
 type Grpc<T> = Result<T, Status>;
 type GrpcResponse<T> = Grpc<Response<T>>;
 
-#[doc(hidden)]
-pub struct Cluster {
+pub(crate) struct Cluster {
     cfg: Config,
     addr: SocketAddr,
     state: Arc<RwLock<State>>,
