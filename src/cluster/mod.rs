@@ -244,10 +244,6 @@ impl Membership for Arc<Cluster> {
             .resolve_endpoint(&sender)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
 
-        let mut sender = MembershipClient::connect(sender)
-            .map_err(|e| Status::unavailable(e.to_string()))
-            .await?;
-
         state.px_rnd = rank.clone();
 
         let p1b = Phase1bReq {
@@ -258,8 +254,13 @@ impl Membership for Arc<Cluster> {
             vval: state.px_vval.clone(),
         };
 
-        let send = async move { sender.phase1b(p1b).await };
-        task::spawn(send.map_err(|e| warn!("phase1b failed: {}", e)));
+        task::spawn(async move {
+            MembershipClient::connect(sender)
+                .map_err(|e| Status::unavailable(e.to_string()))
+                .and_then(|mut c| async move { c.phase1b(p1b).await })
+                .map_err(|e| warn!("phase1b failed: {}", e))
+                .await
+        });
 
         Ok(Response::new(Ack {}))
     }
@@ -410,18 +411,16 @@ impl Membership for Arc<Cluster> {
                 .resolve_endpoint(&subject)
                 .expect("all stored endpoints are valid");
 
-            let send = async move {
-                let mut client = MembershipClient::connect(subject)
+            task::spawn(async move {
+                MembershipClient::connect(subject)
                     .map_err(|e| Status::unavailable(e.to_string()))
-                    .await?;
-
-                client.broadcast(req).await
-            };
-
-            task::spawn(send.map_err(|e| match (e.code(), e.message()) {
-                (Code::AlreadyExists, "delivery is redundant") => {}
-                _ => warn!("infection failed: {}", e),
-            }));
+                    .and_then(|mut c| async move { c.broadcast(req).await })
+                    .map_err(|e| match (e.code(), e.message()) {
+                        (Code::AlreadyExists, "delivery is redundant") => {}
+                        _ => warn!("infection failed: {}", e),
+                    })
+                    .await
+            });
         }
 
         match broadcasted {
