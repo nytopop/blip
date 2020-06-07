@@ -80,9 +80,9 @@ impl<T: Ord, S> IntoIterator for Tumbler<T, S> {
     type IntoIter = Map<IntoIter<(u64, T)>, fn((u64, T)) -> T>;
 
     fn into_iter(mut self) -> Self::IntoIter {
-        let ring = mem::replace(&mut self.rings[0], BTreeSet::new());
-
-        ring.into_iter().map(|(_, t)| t)
+        mem::replace(&mut self.rings[0], BTreeSet::new())
+            .into_iter()
+            .map(|(_, t)| t)
     }
 }
 
