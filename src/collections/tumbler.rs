@@ -87,12 +87,20 @@ impl<T: Ord, S> IntoIterator for Tumbler<T, S> {
 }
 
 impl<T: Ord + Hash + Clone> Tumbler<T> {
+    /// Create a new tumbler with `size` rings.
+    ///
+    /// # Panics
+    /// Panics if `size == 0`.
     pub fn new(size: usize) -> Self {
         Self::with_hasher(size, Default::default())
     }
 }
 
 impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
+    /// Create a new tumbler with `size` rings and the provided `hasher`.
+    ///
+    /// # Panics
+    /// Panics if `size == 0`.
     pub fn with_hasher(size: usize, hasher: S) -> Self {
         assert!(size >= 1);
 
@@ -108,18 +116,22 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         h.finish()
     }
 
+    /// Returns the number of rings in the tumbler.
     pub fn size(&self) -> usize {
         self.rings.len()
     }
 
+    /// Returns the number of entries in the tumbler.
     pub fn len(&self) -> usize {
         self.rings[0].len()
     }
 
+    /// Returns whether the tumbler is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Returns an iterator over all entries in the tumbler, in the first ring's order.
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = &T> {
         self.ring(0)
     }
@@ -155,6 +167,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         self.rings[idx].range(bounds).map(|(_, v)| v)
     }
 
+    /// Insert `val` into the tumbler. Returns whether it was inserted.
     pub fn insert(&mut self, val: T) -> bool {
         // if there's only one ring, we can take ownership right away.
         if self.rings.len() == 1 {
@@ -182,6 +195,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         e
     }
 
+    /// Remove `val` from the tumbler. Returns whether it was removed.
     pub fn remove(&mut self, val: &T) -> bool {
         // NOTE(invariant): if present in any ring, val is equivalent in all rings.
         let mut entry = false;
@@ -195,6 +209,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         entry
     }
 
+    /// Returns whether the tumbler contains `val`.
     pub fn contains(&self, val: &T) -> bool {
         // NOTE(invariant): if present in any ring, val is present in all rings.
         let h = self.hash(0, val);
@@ -256,6 +271,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         })
     }
 
+    /// Clear the tumbler, removing all entries.
     pub fn clear(&mut self) {
         for ring in self.rings.iter_mut() {
             ring.clear();
