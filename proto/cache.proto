@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 syntax = "proto2";
 
-package cache;
+package blip.cache;
 
 // A cache.
 service Cache {

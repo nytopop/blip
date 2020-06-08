@@ -29,13 +29,14 @@
 //! [groupcache]: https://github.com/golang/groupcache
 //! [Mesh]: crate::Mesh
 mod proto {
-    tonic::include_proto!("cache");
+    tonic::include_proto!("blip.cache");
 }
 
 use crate::{ExposedService, MeshService, MultiNodeCut, Subscription};
 use bytes::Bytes;
 use cache_2q::Cache as Cache2q;
 use consistent_hash_ring::Ring;
+use futures::future::FutureExt;
 use once_cell::sync::OnceCell;
 use proto::{cache_client::CacheClient, cache_server::CacheServer, Key, Value};
 use rand::{thread_rng, Rng};
@@ -128,8 +129,6 @@ impl<S: ?Sized> Clone for Cache<S> {
     }
 }
 
-const CACHE: &str = "blip.cache";
-
 #[crate::async_trait]
 impl MeshService for Cache {
     async fn accept(self: Box<Self>, mut cuts: Subscription) {
@@ -137,7 +136,8 @@ impl MeshService for Cache {
             let mut r = self.0.remote.write().await;
 
             r.shards.clear();
-            r.shards.extend(cut.with_meta(CACHE).map(|m| m.0.addr()));
+            r.shards
+                .extend(cut.with_meta(key!(Self)).map(|m| m.0.addr()));
             r.config = Some(cut);
         }
     }
@@ -146,7 +146,7 @@ impl MeshService for Cache {
 impl ExposedService for Cache {
     #[inline]
     fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, keys: &mut K) {
-        keys.extend(vec![(CACHE.to_owned(), vec![])]);
+        keys.extend(vec![(key!(Self).to_owned(), vec![])]);
     }
 
     type Service = CacheServer<Self>;
@@ -163,7 +163,7 @@ impl proto::cache_server::Cache for Cache {
     async fn get(&self, req: Request<Key>) -> Result<Response<Value>, Status> {
         self.get(req.into_inner().key)
             .await
-            .map(|buf| Value { buf: buf.to_vec() })
+            .map(|b| Value { buf: b.to_vec() })
             .map(Response::new)
     }
 }
@@ -300,9 +300,7 @@ impl Cache {
     /// in the event of cluster membership changes.
     #[inline]
     async fn lookup_shard(&self, key: &[u8]) -> Option<Result<Channel, Error>> {
-        let connection = async {
-            let r = self.0.remote.read().await;
-
+        let get_conn = self.0.remote.read().map(|r| {
             // if there's no configuration, we're in standalone mode or the mesh hasn't yet
             // bootstrapped; in either case, assume we're the owner of key.
             let cut = r.config.as_ref()?;
@@ -313,10 +311,9 @@ impl Cache {
                 // otherwise it's some other node's.
                 s => Some(cut[s].channel()),
             }
-        }
-        .await?;
+        });
 
-        Some(connection.await)
+        Some(get_conn.await?.await)
     }
 }
 
