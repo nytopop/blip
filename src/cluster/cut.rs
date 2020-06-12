@@ -6,7 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 //! Multi-node cuts and friends.
 use super::{proto, Metadata, State};
-use futures::stream::{unfold, Stream};
+use futures::{
+    future::FutureExt,
+    stream::{unfold, Stream},
+};
 use rand::{thread_rng, Rng};
 use std::{
     collections::HashMap,
@@ -20,7 +23,7 @@ use std::{
 use thiserror::Error;
 use tokio::sync::{
     broadcast::{Receiver, RecvError},
-    Mutex, RwLock,
+    Mutex, OwnedMutexGuard, RwLock,
 };
 use tonic::transport::{self, Channel, ClientTlsConfig};
 
@@ -250,12 +253,9 @@ impl Member {
     /// Note that the returned future does not borrow from `self`, and remains valid even if
     /// `self` is dropped.
     pub fn channel(&self) -> impl Future<Output = result::Result<Channel, transport::Error>> {
-        let lazy = Arc::clone(&self.chan);
-
-        async move {
-            let mut lz = lazy.lock().await;
-            lz.connect().await
-        }
+        Arc::clone(&self.chan)
+            .lock_owned()
+            .then(LazyChannel::connect)
     }
 }
 
@@ -273,13 +273,13 @@ impl From<transport::Endpoint> for LazyChannel {
 }
 
 impl LazyChannel {
-    async fn connect(&mut self) -> result::Result<Channel, transport::Error> {
-        if let Some(ch) = &self.c {
+    async fn connect(mut lock: OwnedMutexGuard<Self>) -> result::Result<Channel, transport::Error> {
+        if let Some(ch) = &lock.c {
             return Ok(ch.clone());
         }
 
-        let ch = self.endpoint.connect().await?;
-        self.c = Some(ch.clone());
+        let ch = lock.endpoint.connect().await?;
+        lock.c = Some(ch.clone());
 
         Ok(ch)
     }
