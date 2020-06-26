@@ -25,15 +25,15 @@ tonic-build = { version = "0.2.0", default-features = false, features = ["transp
 
 [dependencies]
 prost     = "0.6.1"
-bytes     = "0.5.4"
+bytes     = "0.5.5"
 http      = "0.2.1"
-tracing   = "0.1.14"
+tracing   = "0.1.15"
 fnv       = "1.0.7"
 rand      = "0.7.3"
 tonic     = { version = "0.2.1" , features = ["transport", "tls"] }
 futures   = { version = "0.3.5" , features = ["alloc"] }
 tokio     = { version = "0.2.21", features = ["sync", "rt-threaded", "time", "macros"] }
-thiserror = "1.0.19"
+thiserror = "1.0.20"
 log       = "0.4.8"
 
 # service-specific deps
