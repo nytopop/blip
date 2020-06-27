@@ -457,8 +457,7 @@ where S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
     }
 }
 
-/// A trait that allows individual services access to any accepted membership view-change
-/// proposals.
+/// A service that has access to accepted membership view-change proposals.
 ///
 /// # Examples
 /// ```
@@ -494,7 +493,7 @@ pub trait MeshService: Send {
     async fn accept(self: Box<Self>, cuts: Subscription);
 }
 
-/// A trait for [MeshService]s that can be converted into a [Service] to be served over grpc.
+/// A [MeshService] that can be converted into a [Service] to be served over grpc.
 pub trait ExposedService: MeshService + Clone {
     /// Add metadata to distribute to other members of the mesh.
     fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, _keys: &mut K) {}
