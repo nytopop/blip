@@ -6,15 +6,11 @@
 // copied, modified, or distributed except according to those terms.
 //! Multi-node cuts and friends.
 use super::{proto, Metadata, State};
-use futures::{
-    future::FutureExt,
-    stream::{unfold, Stream},
-};
+use futures::stream::{unfold, Stream};
 use rand::{thread_rng, Rng};
 use std::{
     collections::HashMap,
     convert::TryInto,
-    future::Future,
     net::SocketAddr,
     ops::Index,
     result,
@@ -23,7 +19,7 @@ use std::{
 use thiserror::Error;
 use tokio::sync::{
     broadcast::{Receiver, RecvError},
-    Mutex, OwnedMutexGuard, RwLock,
+    RwLock,
 };
 use tonic::transport::{self, Channel, ClientTlsConfig};
 
@@ -192,7 +188,7 @@ pub struct Member {
     addr: SocketAddr,
     tls: Option<Arc<ClientTlsConfig>>,
     meta: Metadata,
-    chan: Arc<Mutex<LazyChannel>>,
+    chan: Channel,
 }
 
 impl From<&Member> for proto::Endpoint {
@@ -223,7 +219,10 @@ fn endpoint(addr: SocketAddr, tls: Option<&ClientTlsConfig>) -> transport::Endpo
 impl Member {
     #[inline]
     pub(crate) fn new(addr: SocketAddr, tls: Option<Arc<ClientTlsConfig>>, meta: Metadata) -> Self {
-        let chan = Arc::new(Mutex::new(endpoint(addr, tls.as_deref()).into()));
+        let chan = endpoint(addr, tls.as_deref())
+            // NOTE: connect_lazy can't return an error as of tonic 0.2.2
+            .connect_lazy()
+            .unwrap();
 
         #[rustfmt::skip]
         let m = Self { addr, tls, meta, chan };
@@ -246,41 +245,8 @@ impl Member {
         &self.meta.keys
     }
 
-    /// Returns a grpc channel backed by this member. The same channel (or a clone) will be
-    /// provided to all callers, meaning there won't be any additional handshaking overhead
-    /// if this method is called more than once.
-    ///
-    /// Note that the returned future does not borrow from `self`, and remains valid even if
-    /// `self` is dropped.
-    pub fn channel(&self) -> impl Future<Output = result::Result<Channel, transport::Error>> {
-        Arc::clone(&self.chan)
-            .lock_owned()
-            .then(LazyChannel::connect)
-    }
-}
-
-#[derive(Debug)]
-struct LazyChannel {
-    endpoint: transport::Endpoint,
-    c: Option<transport::Channel>,
-}
-
-impl From<transport::Endpoint> for LazyChannel {
-    #[inline]
-    fn from(endpoint: transport::Endpoint) -> Self {
-        Self { endpoint, c: None }
-    }
-}
-
-impl LazyChannel {
-    async fn connect(mut lock: OwnedMutexGuard<Self>) -> result::Result<Channel, transport::Error> {
-        if let Some(ch) = &lock.c {
-            return Ok(ch.clone());
-        }
-
-        let ch = lock.endpoint.connect().await?;
-        lock.c = Some(ch.clone());
-
-        Ok(ch)
+    /// Returns a shared lazily connected grpc channel to this member.
+    pub fn channel(&self) -> Channel {
+        self.chan.clone()
     }
 }
