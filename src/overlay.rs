@@ -228,7 +228,7 @@ impl Mesh<Server> {
     /// Configure TLS for this server.
     pub fn server_tls_config(mut self, tls_config: ServerTlsConfig) -> Self {
         self.cfg.server_tls = true;
-        self.grpc = self.grpc.tls_config(tls_config);
+        self.grpc = self.grpc.tls_config(tls_config).unwrap();
         self
     }
 

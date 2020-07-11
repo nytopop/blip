@@ -32,7 +32,7 @@ use log::{error, info, warn};
 use rand::{thread_rng, Rng};
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     future::Future,
     hash::{Hash, Hasher},
     mem,
@@ -514,7 +514,7 @@ impl Cluster {
             .cloned()
             .unwrap_or_else(ClientTlsConfig::new);
 
-        e.try_into().map(|e: transport::Endpoint| e.tls_config(tls))
+        Ok(transport::Endpoint::try_from(e)?.tls_config(tls)?)
     }
 
     /// Apply a view-change proposal to `state`. This will propagate the view-change to any

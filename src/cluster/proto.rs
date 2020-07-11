@@ -67,6 +67,9 @@ pub enum EndpointError {
 
     #[error("invalid socketaddr: {:?}", .0)]
     InvalidSocketAddr(#[from] SocketAddrError),
+
+    #[error("invalid tls conf: {:?}", .0)]
+    InvalidTls(#[from] transport::Error),
 }
 
 impl TryFrom<&Endpoint> for transport::Endpoint {

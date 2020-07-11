@@ -214,7 +214,7 @@ fn endpoint(addr: SocketAddr, tls: Option<&ClientTlsConfig>) -> transport::Endpo
     match tls.cloned() {
         Some(tls) => format!("https://{}", addr)
             .try_into()
-            .map(|e: transport::Endpoint| e.tls_config(tls)),
+            .map(|e: transport::Endpoint| e.tls_config(tls).unwrap()),
         None => format!("http://{}", addr).try_into(),
     }
     .unwrap()
