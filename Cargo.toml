@@ -21,7 +21,7 @@ full    = ["cache"]
 cache   = ["consistent_hash_ring", "cache_2q", "once_cell"]
 
 [build-dependencies]
-tonic-build = { version = "0.2.2", default-features = false, features = ["transport", "prost"] }
+tonic-build = { version = "0.3.0", default-features = false, features = ["transport", "prost"] }
 
 [dependencies]
 prost     = "0.6.1"
@@ -30,7 +30,7 @@ http      = "0.2.1"
 tracing   = "0.1.16"
 fnv       = "1.0.7"
 rand      = "0.7.3"
-tonic     = { version = "0.2.2" , features = ["transport", "tls"] }
+tonic     = { version = "0.3.0" , features = ["transport", "tls"] }
 futures   = { version = "0.3.5" , features = ["alloc"] }
 tokio     = { version = "0.2.21", features = ["sync", "rt-threaded", "time", "macros"] }
 thiserror = "1.0.20"
