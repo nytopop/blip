@@ -1,6 +1,6 @@
 [package]
 name          = "blip"
-version       = "0.1.0-alpha.12"
+version       = "0.1.0"
 authors       = ["nytopop <ericizoita@gmail.com>"]
 edition       = "2018"
 license       = "MIT OR Apache-2.0"
@@ -27,7 +27,7 @@ tonic-build = { version = "0.3.0", default-features = false, features = ["transp
 prost     = "0.6.1"
 bytes     = "0.5.6"
 http      = "0.2.1"
-tracing   = "0.1.16"
+tracing   = "0.1.17"
 fnv       = "1.0.7"
 rand      = "0.7.3"
 tonic     = { version = "0.3.0" , features = ["transport", "tls"] }

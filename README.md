@@ -21,9 +21,6 @@
 
 A crate for writing fast and highly resilient in-process gRPC service meshes.
 
-# Status
-Extremely alpha, you ~~probably~~ definitely shouldn't use this. It's just an experiment for now.
-
 # Overview
 `blip` provides an implementation of distributed membership based on [rapid][rapid], exposed
 as a gRPC service. Groups of servers become aware of each other through the membership
