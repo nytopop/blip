@@ -205,19 +205,16 @@ impl Membership for Arc<Cluster> {
             return Err(Status::already_exists("sender has already voted"));
         }
 
-        let quorum = state.fast_quorum();
+        let votes = *state
+            .fpx_ballots
+            .entry(nodes.clone())
+            .and_modify(|v| *v += 1)
+            .or_insert(1);
 
-        let ballot = match state.fpx_ballots.entry(nodes) {
-            Entry::Occupied(mut o) => {
-                *o.get_mut() += 1;
-                o
-            }
-            entry => entry.insert(1),
-        };
+        if votes >= state.fast_quorum() {
+            state.fpx_ballots.remove(&nodes).unwrap();
+            self.apply_view_change(&mut state, nodes);
 
-        if *ballot.get() >= quorum {
-            let (proposal, votes) = ballot.remove_entry();
-            self.apply_view_change(&mut state, proposal);
             info!(
                 "(fast) applied view-change with {} vote(s): conf_id={}",
                 votes, state.conf_id
@@ -337,23 +334,27 @@ impl Membership for Arc<Cluster> {
         state.verify_sender(&sender)?;
         state.verify_config(conf_id)?;
 
-        let quorum = state.slow_quorum();
+        let votes = match state.px_rsps.entry(rnd.clone()) {
+            Entry::Occupied(mut o) => {
+                let (voters, _) = o.get_mut();
+                voters.insert(sender);
+                voters.len()
+            }
 
-        let mut ballot = match state.px_rsps.entry(rnd) {
-            Entry::Occupied(o) => o,
-            e => e.insert((HashSet::new(), nodes)),
+            Entry::Vacant(v) => {
+                let (voters, _) = v.insert((HashSet::new(), nodes));
+                voters.insert(sender);
+                voters.len()
+            }
         };
 
-        let (voters, _) = ballot.get_mut();
-        voters.insert(sender);
-
-        if voters.len() > quorum {
-            let (voters, proposal) = ballot.remove();
+        if votes > state.slow_quorum() {
+            let (_, proposal) = state.px_rsps.remove(&rnd).unwrap();
             self.apply_view_change(&mut state, proposal);
+
             info!(
                 "(slow) applied view-change with {} vote(s): conf_id={}",
-                voters.len(),
-                state.conf_id
+                votes, state.conf_id
             );
         }
 

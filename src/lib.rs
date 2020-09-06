@@ -37,7 +37,6 @@
 //! [rapid]: https://arxiv.org/abs/1803.03620
 //! [fpx]: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
 //! [SWIM]: https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf
-#![feature(entry_insert)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![doc(
     issue_tracker_base_url = "https://github.com/nytopop/blip/issues/",
