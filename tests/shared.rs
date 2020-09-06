@@ -5,6 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 //! Shared code referred to by multiple test modules.
+#![allow(unused_attributes)]
+#![type_length_limit = "8388608"]
+
 use blip::{MeshService, MultiNodeCut, Subscription};
 use simplelog::{Config, LevelFilter, TestLogger};
 use std::{
