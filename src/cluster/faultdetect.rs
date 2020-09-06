@@ -73,7 +73,7 @@ impl Cluster {
                 .then(|_| self.state.write())
                 .await;
 
-            // if a there's been a view-change, subjects may have become invalidated.
+            // if there's been a view-change, subjects may have become invalidated.
             if state.conf_id != conf_id {
                 break;
             }
