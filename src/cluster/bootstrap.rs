@@ -4,7 +4,7 @@
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
-//! Strategies for handling network partitions.
+//! Logic for cluster initialization and partition detection.
 use super::{
     cut::{self, MultiNodeCut, Subscription},
     proto::{

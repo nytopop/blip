@@ -12,9 +12,9 @@
 //!
 //! [rapid]: https://arxiv.org/abs/1803.03620
 //! [fpx]: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
+mod bootstrap;
 pub mod cut;
 mod faultdetect;
-mod partition;
 mod proto;
 
 use super::collections::{EventFilter, EventId, FreqSet, Tumbler};
