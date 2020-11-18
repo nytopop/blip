@@ -51,6 +51,13 @@ impl<T: Hash + Eq> IntoIterator for FreqSet<T> {
 }
 
 impl<T> FreqSet<T> {
+    /// Create a new set.
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+
     /// Returns the number of elements in the set.
     pub fn len(&self) -> usize {
         self.inner.len()
@@ -61,8 +68,23 @@ impl<T> FreqSet<T> {
         self.inner.values().sum()
     }
 
+    /// Returns an iterator over all elements in the set.
     pub fn iter(&self) -> Iter<'_, T, usize> {
         self.inner.iter()
+    }
+
+    /// Remove all elements from the set.
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+}
+
+impl<T: Hash + Eq> FreqSet<T> {
+    /// Insert an element into the set.
+    ///
+    /// Returns the updated number of times the element has been inserted.
+    pub fn insert(&mut self, key: T) -> usize {
+        *self.inner.entry(key).and_modify(|v| *v += 1).or_insert(1)
     }
 }
 

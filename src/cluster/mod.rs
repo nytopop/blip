@@ -205,14 +205,9 @@ impl Membership for Arc<Cluster> {
             return Err(Status::already_exists("sender has already voted"));
         }
 
-        let votes = *state
-            .fpx_ballots
-            .entry(nodes.clone())
-            .and_modify(|v| *v += 1)
-            .or_insert(1);
+        let votes = state.fpx_ballots.insert(nodes.clone());
 
         if votes >= state.fast_quorum() {
-            state.fpx_ballots.remove(&nodes).unwrap();
             self.apply_view_change(&mut state, nodes);
 
             info!(
@@ -466,7 +461,7 @@ impl Cluster {
 
             fpx_announced: false,
             fpx_voters: HashSet::new(),
-            fpx_ballots: HashMap::new(),
+            fpx_ballots: FreqSet::new(),
 
             px_rnd: Rank::zero(),
             px_vrnd: Rank::zero(),
@@ -823,7 +818,7 @@ pub(crate) struct State {
     // fast paxos state
     fpx_announced: bool,
     fpx_voters: HashSet<Endpoint>,
-    fpx_ballots: HashMap<Vec<Endpoint>, usize>,
+    fpx_ballots: FreqSet<Vec<Endpoint>>,
 
     // classical paxos state
     px_rnd: Rank,
