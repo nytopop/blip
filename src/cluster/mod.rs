@@ -152,9 +152,7 @@ impl Membership for Arc<Cluster> {
             return Err(Status::aborted("already announced fast paxos round"));
         }
 
-        (edges.iter())
-            .map(|e| state.verify_edge(&sender, e))
-            .collect::<Grpc<()>>()?;
+        (edges.iter()).try_for_each(|e| state.verify_edge(&sender, e))?;
 
         for Edge { node, ring, join } in edges {
             state.merge_cd_alert(node, join, Vote {
