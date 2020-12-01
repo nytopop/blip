@@ -8,7 +8,7 @@ syntax = "proto2";
 
 package blip;
 
-// TODO(doc)
+// The interface that a node running the blip protocol should expose.
 service Membership {
 	rpc PreJoin(PreJoinReq) returns (PreJoinResp);
 
@@ -16,15 +16,15 @@ service Membership {
 
 	rpc BatchedAlert(BatchedAlertReq) returns (Ack);
 
-	rpc FastPhase2b(FastPhase2bReq) returns (Ack);
+	rpc FastAccepted(FastAcceptedReq) returns (Ack);
 
-	rpc Phase1a(Phase1aReq) returns (Ack);
+	rpc Prepare(PrepareReq) returns (Ack);
 
-	rpc Phase1b(Phase1bReq) returns (Ack);
+	rpc Promise(PromiseReq) returns (Ack);
 
-	rpc Phase2a(Phase2aReq) returns (Ack);
+	rpc Accept(AcceptReq) returns (Ack);
 
-	rpc Phase2b(Phase2bReq) returns (Ack);
+	rpc Accepted(AcceptedReq) returns (Ack);
 
 	rpc Broadcast(BroadcastReq) returns (Ack);
 
@@ -145,7 +145,7 @@ message Join {
 	required Metadata meta = 2;
 }
 
-message FastPhase2bReq {
+message FastAcceptedReq {
 	required Endpoint sender = 1;
 	required uint64 conf_id = 2;
 	repeated Endpoint nodes = 3;
@@ -156,13 +156,13 @@ message Rank {
 	required uint64 node_idx = 2;
 }
 
-message Phase1aReq {
+message PrepareReq {
 	required Endpoint sender = 1;
 	required uint64 conf_id = 2;
 	required Rank rank = 3;
 }
 
-message Phase1bReq {
+message PromiseReq {
 	required Endpoint sender = 1;
 	required uint64 conf_id = 2;
 	required Rank rnd = 3;
@@ -170,14 +170,14 @@ message Phase1bReq {
 	repeated Endpoint vval = 5;
 }
 
-message Phase2aReq {
+message AcceptReq {
 	required Endpoint sender = 1;
 	required uint64 conf_id = 2;
 	required Rank rnd = 3;
 	repeated Endpoint vval = 4;
 }
 
-message Phase2bReq {
+message AcceptedReq {
 	required Endpoint sender = 1;
 	required uint64 conf_id = 2;
 	required Rank rnd = 3;
@@ -195,10 +195,10 @@ message BroadcastReq {
 	// The message to be broadcast.
 	oneof broadcasted {
 		BatchedAlertReq BatchedAlert = 3;
-		FastPhase2bReq FastPhase2b = 4;
-		Phase1aReq Phase1a = 5;
-		Phase1bReq Phase1b = 6;
-		Phase2aReq Phase2a = 7;
-		Phase2bReq Phase2b = 8;
+		FastAcceptedReq FastAccepted = 4;
+		PrepareReq Prepare = 5;
+		PromiseReq Promise = 6;
+		AcceptReq Accept = 7;
+		AcceptedReq Accepted = 8;
 	}
 }

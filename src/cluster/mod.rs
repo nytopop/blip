@@ -167,7 +167,7 @@ impl Membership for Arc<Cluster> {
             state.register_fpx_round(&proposal);
 
             info!("starting fast round: conf_id={}", conf_id);
-            task::spawn(Arc::clone(self).do_broadcast(FastPhase2b(FastPhase2bReq {
+            task::spawn(Arc::clone(self).do_broadcast(FastAccepted(FastAcceptedReq {
                 sender: self.local_node(),
                 conf_id,
                 nodes: proposal,
@@ -183,7 +183,7 @@ impl Membership for Arc<Cluster> {
         Ok(Response::new(Ack {}))
     }
 
-    /// Handle a fast-phase2b request.
+    /// Handle a fast paxos accepted request.
     ///
     /// This rpc covers the most common view-change scenario where most members in the
     /// cluster agree on the same proposal. In this case, a single round of fast paxos
@@ -191,9 +191,9 @@ impl Membership for Arc<Cluster> {
     ///
     /// We sum all votes received thus far, and apply the view-change proposal iff there
     /// is a quorum (>= 3/4) of votes for it.
-    async fn fast_phase2b(&self, req: Request<FastPhase2bReq>) -> GrpcResponse<Ack> {
+    async fn fast_accepted(&self, req: Request<FastAcceptedReq>) -> GrpcResponse<Ack> {
         #[rustfmt::skip]
-        let FastPhase2bReq { sender, conf_id, nodes } = req.into_inner();
+        let FastAcceptedReq { sender, conf_id, nodes } = req.into_inner();
         let mut state = self.state.write().await;
 
         state.verify_sender(&sender)?;
@@ -217,10 +217,10 @@ impl Membership for Arc<Cluster> {
         Ok(Response::new(Ack {}))
     }
 
-    // TODO(doc)
-    async fn phase1a(&self, req: Request<Phase1aReq>) -> GrpcResponse<Ack> {
+    /// Handle a classical paxos prepare request.
+    async fn prepare(&self, req: Request<PrepareReq>) -> GrpcResponse<Ack> {
         #[rustfmt::skip]
-        let Phase1aReq { sender, conf_id, rank } = req.into_inner();
+        let PrepareReq { sender, conf_id, rank } = req.into_inner();
         let mut state = self.state.write().await;
 
         state.verify_sender(&sender)?;
@@ -236,7 +236,7 @@ impl Membership for Arc<Cluster> {
 
         state.px_rnd = rank.clone();
 
-        let p1b = Phase1bReq {
+        let p = PromiseReq {
             sender: self.local_node(),
             conf_id,
             rnd: rank,
@@ -247,16 +247,16 @@ impl Membership for Arc<Cluster> {
         task::spawn(async move {
             MembershipClient::connect(sender)
                 .map_err(|e| Status::unavailable(e.to_string()))
-                .and_then(|mut c| async move { c.phase1b(p1b).await })
-                .map_err(|e| warn!("phase1b failed: {}", e))
+                .and_then(|mut c| async move { c.promise(p).await })
+                .map_err(|e| warn!("promise failed: {}", e))
                 .await
         });
 
         Ok(Response::new(Ack {}))
     }
 
-    // TODO(doc)
-    async fn phase1b(&self, req: Request<Phase1bReq>) -> GrpcResponse<Ack> {
+    /// Handle a classical paxos promise request.
+    async fn promise(&self, req: Request<PromiseReq>) -> GrpcResponse<Ack> {
         let req = req.into_inner();
         let mut state = self.state.write().await;
 
@@ -267,16 +267,16 @@ impl Membership for Arc<Cluster> {
             return Err(Status::aborted("rnd is not our crnd"));
         }
 
-        state.px_p1bs.push(req);
+        state.px_promised.push(req);
 
         let quorum = state.slow_quorum();
-        let votes = state.px_p1bs.len();
+        let votes = state.px_promised.len();
 
         if votes > quorum && state.px_cval.is_empty() {
             if let Some(proposal) = state.choose_px_proposal() {
                 state.px_cval = proposal.clone();
 
-                task::spawn(Arc::clone(self).do_broadcast(Phase2a(Phase2aReq {
+                task::spawn(Arc::clone(self).do_broadcast(Accept(AcceptReq {
                     sender: self.local_node(),
                     conf_id: state.conf_id,
                     rnd: state.px_crnd.clone(),
@@ -288,10 +288,10 @@ impl Membership for Arc<Cluster> {
         Ok(Response::new(Ack {}))
     }
 
-    // TODO(doc)
-    async fn phase2a(&self, req: Request<Phase2aReq>) -> GrpcResponse<Ack> {
+    /// Handle a classical paxos accept request.
+    async fn accept(&self, req: Request<AcceptReq>) -> GrpcResponse<Ack> {
         #[rustfmt::skip]
-        let Phase2aReq { sender, conf_id, rnd, vval } = req.into_inner();
+        let AcceptReq { sender, conf_id, rnd, vval } = req.into_inner();
         let mut state = self.state.write().await;
 
         state.verify_sender(&sender)?;
@@ -308,7 +308,7 @@ impl Membership for Arc<Cluster> {
         state.px_vrnd = rnd.clone();
         state.px_vval = vval.clone();
 
-        task::spawn(Arc::clone(self).do_broadcast(Phase2b(Phase2bReq {
+        task::spawn(Arc::clone(self).do_broadcast(Accepted(AcceptedReq {
             sender: self.local_node(),
             conf_id,
             rnd,
@@ -318,16 +318,16 @@ impl Membership for Arc<Cluster> {
         Ok(Response::new(Ack {}))
     }
 
-    // TODO(doc)
-    async fn phase2b(&self, req: Request<Phase2bReq>) -> GrpcResponse<Ack> {
+    /// Handle a classical paxos accepted request.
+    async fn accepted(&self, req: Request<AcceptedReq>) -> GrpcResponse<Ack> {
         #[rustfmt::skip]
-        let Phase2bReq { sender, conf_id, rnd, nodes } = req.into_inner();
+        let AcceptedReq { sender, conf_id, rnd, nodes } = req.into_inner();
         let mut state = self.state.write().await;
 
         state.verify_sender(&sender)?;
         state.verify_config(conf_id)?;
 
-        let votes = match state.px_rsps.entry(rnd.clone()) {
+        let votes = match state.px_accepted.entry(rnd.clone()) {
             Entry::Occupied(mut o) => {
                 let (voters, _) = o.get_mut();
                 voters.insert(sender);
@@ -342,7 +342,7 @@ impl Membership for Arc<Cluster> {
         };
 
         if votes > state.slow_quorum() {
-            let (_, proposal) = state.px_rsps.remove(&rnd).unwrap();
+            let (_, proposal) = state.px_accepted.remove(&rnd).unwrap();
             self.apply_view_change(&mut state, proposal);
 
             info!(
@@ -419,11 +419,11 @@ impl Membership for Arc<Cluster> {
 
         match broadcasted {
             BatchedAlert(ba) => self.batched_alert(Request::new(ba)).await,
-            FastPhase2b(fp2b) => self.fast_phase2b(Request::new(fp2b)).await,
-            Phase1a(p1a) => self.phase1a(Request::new(p1a)).await,
-            Phase1b(p1b) => self.phase1b(Request::new(p1b)).await,
-            Phase2a(p2a) => self.phase2a(Request::new(p2a)).await,
-            Phase2b(p2b) => self.phase2b(Request::new(p2b)).await,
+            FastAccepted(fa) => self.fast_accepted(Request::new(fa)).await,
+            Prepare(p) => self.prepare(Request::new(p)).await,
+            Promise(p) => self.promise(Request::new(p)).await,
+            Accept(a) => self.accept(Request::new(a)).await,
+            Accepted(a) => self.accepted(Request::new(a)).await,
         }
     }
 
@@ -466,8 +466,8 @@ impl Cluster {
             px_crnd: Rank::zero(),
             px_vval: Vec::new(),
             px_cval: Vec::new(),
-            px_rsps: HashMap::new(),
-            px_p1bs: Vec::new(),
+            px_accepted: HashMap::new(),
+            px_promised: Vec::new(),
         }));
 
         let (cuts, _) = broadcast::channel(8);
@@ -695,7 +695,7 @@ impl Cluster {
 
         info!("starting slow round: conf_id={}", conf_id);
 
-        self.do_broadcast(Phase1a(Phase1aReq {
+        self.do_broadcast(Prepare(PrepareReq {
             sender,
             conf_id,
             rank,
@@ -824,8 +824,8 @@ pub(crate) struct State {
     px_crnd: Rank,
     px_vval: Vec<Endpoint>,
     px_cval: Vec<Endpoint>,
-    px_rsps: HashMap<Rank, (HashSet<Endpoint>, Vec<Endpoint>)>,
-    px_p1bs: Vec<Phase1bReq>,
+    px_accepted: HashMap<Rank, (HashSet<Endpoint>, Vec<Endpoint>)>,
+    px_promised: Vec<PromiseReq>,
 }
 
 #[inline]
@@ -997,8 +997,8 @@ impl State {
         self.px_crnd = Rank::zero();
         self.px_vval.clear();
         self.px_cval.clear();
-        self.px_rsps.clear();
-        self.px_p1bs.clear();
+        self.px_accepted.clear();
+        self.px_promised.clear();
     }
 
     /// Clear all membership state in preparation for a join.
@@ -1066,15 +1066,15 @@ impl State {
 
     // TODO(doc)
     fn choose_px_proposal(&self) -> Option<Vec<Endpoint>> {
-        // NOTE(invariant): there must be at least one phase1b request available
-        assert!(!self.px_p1bs.is_empty());
+        // NOTE(invariant): there must be at least one promise request available
+        assert!(!self.px_promised.is_empty());
 
-        let max_vrnd = self.px_p1bs.iter().map(|p| &p.vrnd).max().unwrap();
+        let max_vrnd = self.px_promised.iter().map(|p| &p.vrnd).max().unwrap();
 
         // Let k be the largest value of vr(a) for all a in Q.
         //     V be the set of all vv(a) for all a in Q s.t vr(a) == k
         let vvals: FreqSet<&[Endpoint]> = self
-            .px_p1bs
+            .px_promised
             .iter()
             .filter(|p| &p.vrnd == max_vrnd)
             .filter(|p| !p.vval.is_empty())
@@ -1108,9 +1108,9 @@ impl State {
         // 1) The coordinator will only proceed with phase 2 if it has a valid vote.
         //
         // 2) It is likely that the coordinator (itself being an acceptor) is the only one with a valid
-        // vval, and has not heard a Phase1bMessage from itself yet. Once that arrives, phase1b will be
+        // vval, and has not heard a PromiseReq from itself yet. Once that arrives, promise will be
         // triggered again.
-        self.px_p1bs
+        self.px_promised
             .iter()
             .filter(|p| !p.vval.is_empty())
             .map(|p| p.vval.clone())
