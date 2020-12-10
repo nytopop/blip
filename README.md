@@ -1,19 +1,19 @@
 <p align="center">
-  <!-- project logo --!>
+  <!-- project logo -->
   <img src="blip.png" alt="logo"><br><br>
-  <!-- docs.rs --!>
+  <!-- docs.rs -->
   <a href="https://docs.rs/blip">
     <img alt="Docs.rs" src="https://docs.rs/blip/badge.svg">
   </a>
-  <!-- crates.io version !-->
+  <!-- crates.io version -->
   <a href="https://crates.io/crates/blip">
     <img alt="Crates.io" src="https://img.shields.io/crates/v/blip?style=flat-square">
   </a>
-  <!-- crates.io downloads --!>
+  <!-- crates.io downloads -->
   <a href="https://crates.io/crates/blip">
     <img alt="Crates.io" src="https://img.shields.io/crates/d/blip?style=flat-square">
   </a>
-  <!-- crates.io license --!>
+  <!-- crates.io license -->
   <a href="./LICENSE-APACHE">
     <img alt="Apache-2.0 OR MIT" src="https://img.shields.io/crates/l/blip?style=flat-square">
   </a>
