@@ -46,7 +46,7 @@ use thiserror::Error;
 use tokio::{
     sync::{broadcast, oneshot, RwLock},
     task,
-    time::delay_for,
+    time::sleep,
 };
 use tonic::{
     transport::{self, ClientTlsConfig},
@@ -629,7 +629,7 @@ impl Cluster {
     /// same ~short period of time into the same batch.
     async fn send_batch(self: Arc<Self>) {
         // wait a bit to allow more edges to be included in this batch.
-        delay_for(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(100)).await;
 
         let sender = self.local_node();
 
@@ -713,8 +713,8 @@ struct PaxosRound {
 impl PaxosRound {
     async fn init_delay(self) -> Self {
         let exp = ((self.members + 1) as f64).log(2.0) * 4000.0;
-        let ms = thread_rng().gen_range(1000, exp as u64);
-        delay_for(Duration::from_millis(ms)).await;
+        let ms = thread_rng().gen_range(1000..exp as u64);
+        sleep(Duration::from_millis(ms)).await;
         self
     }
 }

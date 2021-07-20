@@ -17,7 +17,7 @@ use futures::{
 use std::{collections::HashMap, sync::Arc};
 use tokio::{
     select,
-    time::{delay_for, timeout},
+    time::{sleep, timeout},
 };
 
 impl Cluster {
@@ -69,7 +69,7 @@ impl Cluster {
 
             // wait for all probes to finish, and for fd_timeout to elapse. this caps the
             // rate at which subjects are probed to k per fd_timeout.
-            let mut state = join(delay_for(self.cfg.fd_timeout), probes)
+            let mut state = join(sleep(self.cfg.fd_timeout), probes)
                 .then(|_| self.state.write())
                 .await;
 

@@ -21,29 +21,29 @@ full    = ["cache"]
 cache   = ["consistent_hash_ring", "cache_2q", "once_cell"]
 
 [build-dependencies]
-tonic-build = { version = "0.3.0", default-features = false, features = ["transport", "prost"] }
+tonic-build = { version = "0.5.1", default-features = false, features = ["transport", "prost"] }
 
 [dependencies]
-prost     = "0.6.1"
-bytes     = "0.5.6"
+prost     = "0.8.0"
+bytes     = "1.0.1"
 http      = "0.2.1"
 tracing   = "0.1.19"
 fnv       = "1.0.7"
-rand      = "0.7.3"
-tonic     = { version = "0.3.1" , features = ["transport", "tls"] }
-futures   = { version = "0.3.5" , features = ["alloc"] }
-tokio     = { version = "0.2.22", features = ["sync", "rt-threaded", "time", "macros"] }
-thiserror = "1.0.20"
-log       = "0.4.11"
+rand      = "0.8.4"
+tonic     = { version = "0.5.0" , features = ["transport", "tls", "prost"] }
+futures   = { version = "0.3.15" , features = ["alloc"] }
+tokio     = { version = "1.8.2", features = ["sync", "rt-multi-thread", "time", "macros"] }
+thiserror = "1.0.26"
+log       = "0.4.14"
 
 # service-specific deps
 consistent_hash_ring = { version = "0.8.0" , optional = true }
 cache_2q             = { version = "0.10.1", optional = true }
-once_cell            = { version = "1.4.1" , optional = true }
+once_cell            = { version = "1.8.0" , optional = true }
 
 [dev-dependencies]
 quickcheck        = "0.9.2"
 quickcheck_macros = "0.9.1"
 quickcheck_async  = "0.1.1"
-version-sync      = "0.9.1"
-simplelog         = { version = "0.8.0", features = ["test"] }
+version-sync      = "0.9.2"
+simplelog         = { version = "0.10.0", features = ["test"] }

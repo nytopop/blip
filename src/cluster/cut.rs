@@ -18,7 +18,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::{
-    broadcast::{Receiver, RecvError},
+    broadcast::{error::RecvError, Receiver},
     RwLock,
 };
 use tonic::transport::{self, Channel, ClientTlsConfig};
@@ -138,7 +138,7 @@ impl MultiNodeCut {
     /// # Panics
     /// Panics if the configuration is empty.
     pub(crate) fn random_member(&self) -> &Member {
-        &self.members[thread_rng().gen_range(0, self.members.len())]
+        &self.members[thread_rng().gen_range(0..self.members.len())]
     }
 
     /// Returns all members in the configuration.

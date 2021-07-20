@@ -229,12 +229,16 @@ impl Cache {
                 lazy.val.set(call).unwrap();
                 lazy.sem.add_permits(2 ^ 24);
                 self.0.inflight.lock().await.remove(&key);
-                lazy.val.get().unwrap().clone()
+                (lazy.val.get().unwrap().as_ref())
+                    .map(|v| v.clone())
+                    .map_err(clone_status)
             }
 
             Flight::Follower(lazy) => {
                 drop(lazy.sem.acquire().await);
-                lazy.val.get().unwrap().clone()
+                (lazy.val.get().unwrap().as_ref())
+                    .map(|v| v.clone())
+                    .map_err(clone_status)
             }
         }
     }
@@ -270,7 +274,7 @@ impl Cache {
             let buf = Bytes::from(val.into_inner().buf);
 
             // store in the hot cache 1/8 of the time (space is limited).
-            if thread_rng().gen_range(0, 8) == 4 {
+            if thread_rng().gen_range(0..8) == 4 {
                 store(&self.0.hot_keys, key, buf.clone()).await;
             }
 
@@ -322,6 +326,16 @@ async fn load(cache: &Mutex<Cache2q<Bytes, Bytes>>, key: &[u8]) -> Option<Bytes>
 #[inline]
 async fn store(cache: &Mutex<Cache2q<Bytes, Bytes>>, key: Bytes, buf: Bytes) {
     cache.lock().await.insert(key, buf);
+}
+
+/// Clone a grpc status.
+fn clone_status(status: &Status) -> Status {
+    Status::with_details_and_metadata(
+        status.code(),
+        status.message(),
+        Bytes::copy_from_slice(status.details()),
+        status.metadata().clone(),
+    )
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ use tokio::select;
 use tonic::{
     body::BoxBody,
     codegen::{
-        http::{HeaderMap, Request as HttpRequest, Response as HttpResponse},
+        http::{Request as HttpRequest, Response as HttpResponse},
         Service,
     },
     transport::{
@@ -289,7 +289,7 @@ impl Mesh<Server> {
 
     /// Intercept inbound headers and add a [tracing::Span][Span] to each response future.
     pub fn trace_fn<F>(mut self, f: F) -> Self
-    where F: Fn(&HeaderMap) -> Span + Send + Sync + 'static {
+    where F: Fn(&http::Request<()>) -> Span + Send + Sync + 'static {
         self.grpc = self.grpc.trace_fn(f);
         self
     }

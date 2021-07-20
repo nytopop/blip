@@ -20,7 +20,7 @@ use futures::{
 use log::{info, warn};
 use std::{borrow::Cow, cmp, sync::Arc, time::Duration};
 use thiserror::Error;
-use tokio::time::{delay_for, timeout, Elapsed};
+use tokio::time::{error::Elapsed, sleep, timeout};
 use tonic::transport;
 
 #[derive(Debug, Error)]
@@ -138,7 +138,7 @@ impl Cluster {
         while let Err(e) = self.join_via(&seed(), join_backoff).await {
             warn!("join failed: {}", e);
 
-            delay_for(retry_backoff).await;
+            sleep(retry_backoff).await;
             retry_backoff = cmp::min(retry_backoff * 2, RETRY_MAX);
             join_backoff = cmp::min(join_backoff + (join_backoff / 2), JOIN_MAX);
         }
