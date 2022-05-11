@@ -1,46 +1,13 @@
 on: [push, pull_request]
 
 jobs:
-  check:
-    name: check
+  check-and-test:
+    name: check and test
     runs-on: ubuntu-latest
     steps:
       - name: checkout source
         uses: actions/checkout@v2
-      - name: install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - name: cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --features full
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout source
-        uses: actions/checkout@v2
-      - name: install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features full
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout source
-        uses: actions/checkout@v2
+
       - name: install nightly toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -48,13 +15,27 @@ jobs:
           toolchain: nightly
           override: true
           components: rustfmt, clippy
-      - name: cargo fmt
+
+      - name: cargo check
         uses: actions-rs/cargo@v1
         with:
-          command: fmt
-          args: --all -- --check
+          command: check
+          args: --features full
+
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --features full
+
       - name: cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --features full -- -D warnings
+
+      - name: cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all --check
