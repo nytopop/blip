@@ -312,7 +312,7 @@ impl Cache {
             }
         });
 
-        Some(conn.await?)
+        conn.await
     }
 }
 

@@ -23,16 +23,16 @@ struct UnsafeBounds<T> {
 impl<T> RangeBounds<(u64, T)> for UnsafeBounds<T> {
     fn start_bound(&self) -> Bound<&(u64, T)> {
         match &self.s {
-            Bound::Excluded(b) => Bound::Excluded(&b),
-            Bound::Included(b) => Bound::Included(&b),
+            Bound::Excluded(b) => Bound::Excluded(b),
+            Bound::Included(b) => Bound::Included(b),
             Bound::Unbounded => Bound::Unbounded,
         }
     }
 
     fn end_bound(&self) -> Bound<&(u64, T)> {
         match &self.e {
-            Bound::Excluded(b) => Bound::Excluded(&b),
-            Bound::Included(b) => Bound::Included(&b),
+            Bound::Excluded(b) => Bound::Excluded(b),
+            Bound::Included(b) => Bound::Included(b),
             Bound::Unbounded => Bound::Unbounded,
         }
     }
@@ -80,9 +80,7 @@ impl<T: Ord, S> IntoIterator for Tumbler<T, S> {
     type IntoIter = Map<IntoIter<(u64, T)>, fn((u64, T)) -> T>;
 
     fn into_iter(mut self) -> Self::IntoIter {
-        mem::replace(&mut self.rings[0], BTreeSet::new())
-            .into_iter()
-            .map(|(_, t)| t)
+        mem::take(&mut self.rings[0]).into_iter().map(|(_, t)| t)
     }
 }
 
@@ -144,8 +142,7 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
         &self,
         idx: usize,
         range: R,
-    ) -> impl DoubleEndedIterator<Item = &T>
-    {
+    ) -> impl DoubleEndedIterator<Item = &T> {
         // NOTE(safety): should be safe because we prevent side-effects
         let convert = |t: &T| unsafe {
             let h = self.hash(idx, t);

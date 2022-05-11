@@ -60,6 +60,7 @@ derive_cmp_with!(Endpoint, e => (&e.host, e.port, e.tls));
 derive_cmp_with!(NodeId, id => u128::from(id));
 derive_cmp_with!(Rank, r => (r.round, r.node_idx));
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub enum EndpointError {
     #[error("invalid uri: {:?}", .0)]
