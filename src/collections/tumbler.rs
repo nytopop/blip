@@ -280,14 +280,16 @@ impl<T: Ord + Hash + Clone, S: BuildHasher> Tumbler<T, S> {
 mod tests {
     use super::*;
     use quickcheck_macros::quickcheck;
-    use std::{collections::HashSet, iter, num::NonZeroUsize};
+    use std::{collections::HashSet, iter, num::NonZeroU8};
 
     #[quickcheck]
-    fn rings_contain_all_elements(k: NonZeroUsize, input: HashSet<u32>) -> bool {
-        let mut t = Tumbler::new(k.get());
+    fn rings_contain_all_elements(k: NonZeroU8, input: HashSet<u32>) -> bool {
+        let k = k.get() as usize;
+
+        let mut t = Tumbler::new(k);
         t.extend(input.iter().copied());
 
-        let rings: Vec<HashSet<_>> = (0..k.get()).map(|k| t.ring(k).collect()).collect();
+        let rings: Vec<HashSet<_>> = (0..k).map(|k| t.ring(k).collect()).collect();
 
         let mut r = None;
         for ring in rings {
@@ -305,8 +307,8 @@ mod tests {
     }
 
     #[quickcheck]
-    fn is_deterministic(k: NonZeroUsize, input: Vec<u32>) -> bool {
-        let k = k.get();
+    fn is_deterministic(k: NonZeroU8, input: Vec<u32>) -> bool {
+        let k = k.get() as usize;
 
         let mut a = Tumbler::new(k);
         a.extend(input.iter().copied());

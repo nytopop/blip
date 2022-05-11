@@ -92,12 +92,12 @@ impl<T: Hash + Eq> FreqSet<T> {
 mod tests {
     use super::*;
     use quickcheck_macros::quickcheck;
-    use std::{collections::HashSet, num::NonZeroUsize};
+    use std::{collections::HashSet, num::NonZeroU8};
 
     #[quickcheck]
-    fn counts_are_accurate(n: NonZeroUsize, input: HashSet<u32>) -> bool {
+    fn counts_are_accurate(n: NonZeroU8, input: HashSet<u32>) -> bool {
         let mut fs: FreqSet<u32> = input.iter().copied().collect();
-        let n = n.get();
+        let n = n.get() as usize;
 
         for _ in 0..n - 1 {
             fs.extend(input.iter().copied());
