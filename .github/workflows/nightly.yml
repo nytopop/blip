@@ -17,6 +17,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
+          args: --features full
   test:
     name: test
     runs-on: ubuntu-latest
@@ -56,4 +57,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -- --features full -D warnings
+          args: --features full -- -D warnings
