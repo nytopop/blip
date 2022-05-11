@@ -41,7 +41,7 @@
 #![doc(
     issue_tracker_base_url = "https://github.com/nytopop/blip/issues/",
     html_logo_url = "https://raw.githubusercontent.com/nytopop/blip/master/blip.png",
-    html_root_url = "https://docs.rs/blip/0.2.0",
+    html_root_url = "https://docs.rs/blip/0.3.0",
     test(
         no_crate_inject,
         attr(
