@@ -10,25 +10,29 @@ use super::cluster::{
     Cluster, Config,
 };
 
+use bytes::Bytes;
 use futures::{
     future::{pending, FutureExt, TryFutureExt},
     stream::{FuturesUnordered, StreamExt},
 };
-use std::{error, future::Future, net::SocketAddr, result, sync::Arc, time::Duration};
+use std::{
+    convert::Infallible, error, future::Future, net::SocketAddr, result, sync::Arc, time::Duration,
+};
 use thiserror::Error;
 use tokio::select;
 use tonic::{
     body::BoxBody,
     codegen::{
-        http::{Request as HttpRequest, Response as HttpResponse},
+        http::{Request, Response},
         Service,
     },
     transport::{
         self,
-        server::{Router, Unimplemented},
+        server::{Router, Routes},
         Body, ClientTlsConfig, NamedService, Server, ServerTlsConfig,
     },
 };
+use tower_layer::Layer;
 use tracing::Span;
 
 /// A `Result<(), Error>`.
@@ -224,7 +228,7 @@ impl<R> Mesh<R> {
 }
 
 /// Methods that pass-through to [tonic::transport].
-impl Mesh<Server> {
+impl<L> Mesh<Server<L>> {
     /// Configure TLS for this server.
     pub fn server_tls_config(mut self, tls_config: ServerTlsConfig) -> Self {
         self.cfg.server_tls = true;
@@ -240,7 +244,7 @@ impl Mesh<Server> {
 
     /// Set a timeout for all request handlers.
     pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.grpc.timeout(timeout);
+        self.grpc = self.grpc.timeout(timeout);
         self
     }
 
@@ -294,15 +298,14 @@ impl Mesh<Server> {
         self
     }
 
-    /// Add a service `S` to the mesh. Any endpoints it exposes should use request paths
-    /// namespaced by the [NamedService] implementation, so they can be routed alongside
-    /// other services.
-    pub fn add_service<S>(self, svc: S) -> Mesh<Router<S::Service, Unimplemented>>
+    /// Add an [ExposedService] to the mesh. Any endpoints it exposes should use request paths
+    /// namespaced by the [NamedService] implementation, so they can be routed alongside other
+    /// services.
+    pub fn add_service<S>(self, svc: S) -> Mesh<Router<L>>
     where
         S: ExposedService + 'static,
-        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
-        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Error:
-            Into<Box<dyn error::Error + Send + Sync>> + Send,
+        <<S as ExposedService>::Service as Service<Request<Body>>>::Future: Send + 'static,
+        L: Clone,
     {
         #[rustfmt::skip]
         let Mesh { mut cfg, mut grpc, svcs } = self.add_mesh_service(svc.clone());
@@ -316,7 +319,16 @@ impl Mesh<Server> {
     ///
     /// Resolves once the mesh has exited.
     #[inline]
-    pub async fn serve(self, addr: SocketAddr) -> Result {
+    pub async fn serve<Resp>(self, addr: SocketAddr) -> Result
+    where
+        L: Layer<Routes> + Clone,
+        L::Service: Service<Request<Body>, Response = Response<Resp>> + Clone + Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Future: Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Error:
+            Into<Box<dyn error::Error + Send + Sync>> + Send,
+        Resp: http_body::Body<Data = Bytes> + Send + 'static,
+        Resp::Error: Into<Box<dyn error::Error + Send + Sync>>,
+    {
         self.serve_with_shutdown(addr, pending()).await
     }
 
@@ -325,8 +337,17 @@ impl Mesh<Server> {
     /// Shutdown will be initiated when `signal` resolves.
     ///
     /// Resolves once the mesh has exited.
-    pub async fn serve_with_shutdown<F>(mut self, addr: SocketAddr, signal: F) -> Result
-    where F: Future<Output = ()> + Send {
+    pub async fn serve_with_shutdown<Resp, F>(mut self, addr: SocketAddr, signal: F) -> Result
+    where
+        F: Future<Output = ()> + Send,
+        L: Layer<Routes> + Clone,
+        L::Service: Service<Request<Body>, Response = Response<Resp>> + Clone + Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Future: Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Error:
+            Into<Box<dyn error::Error + Send + Sync>> + Send,
+        Resp: http_body::Body<Data = Bytes> + Send + 'static,
+        Resp::Error: Into<Box<dyn error::Error + Send + Sync>>,
+    {
         let cluster = Arc::new(Cluster::new(self.cfg, addr));
 
         select! {
@@ -355,21 +376,12 @@ impl Mesh<Server> {
 /// These methods are duplicated here because it isn't possible to be generic over [Server]
 /// and [Router] in the same impl block. The logic is equivalent to the counterparts above.
 #[doc(hidden)]
-impl<A, B> Mesh<Router<A, B>>
-where
-    A: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>> + Clone + Send + 'static,
-    A::Future: Send + 'static,
-    A::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
-    B: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>> + Clone + Send + 'static,
-    B::Future: Send + 'static,
-    B::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
-{
-    pub fn add_service<S>(self, svc: S) -> Mesh<Router<S::Service, impl Service<HttpRequest<Body>>>>
+impl<L> Mesh<Router<L>> {
+    pub fn add_service<S>(self, svc: S) -> Mesh<Router<L>>
     where
         S: ExposedService + 'static,
-        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Future: Send + 'static,
-        <<S as ExposedService>::Service as Service<HttpRequest<Body>>>::Error:
-            Into<Box<dyn error::Error + Send + Sync>> + Send,
+        <<S as ExposedService>::Service as Service<Request<Body>>>::Future: Send + 'static,
+        L: Clone,
     {
         #[rustfmt::skip]
         let Mesh { mut cfg, grpc, svcs } = self.add_mesh_service(svc.clone());
@@ -380,12 +392,30 @@ where
     }
 
     #[inline]
-    pub async fn serve(self, addr: SocketAddr) -> Result {
+    pub async fn serve<Resp>(self, addr: SocketAddr) -> Result
+    where
+        L: Layer<Routes> + Clone,
+        L::Service: Service<Request<Body>, Response = Response<Resp>> + Clone + Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Future: Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Error:
+            Into<Box<dyn error::Error + Send + Sync>> + Send,
+        Resp: http_body::Body<Data = Bytes> + Send + 'static,
+        Resp::Error: Into<Box<dyn error::Error + Send + Sync>>,
+    {
         self.serve_with_shutdown(addr, pending()).await
     }
 
-    pub async fn serve_with_shutdown<F>(self, addr: SocketAddr, signal: F) -> Result
-    where F: Future<Output = ()> + Send {
+    pub async fn serve_with_shutdown<Resp, F>(self, addr: SocketAddr, signal: F) -> Result
+    where
+        F: Future<Output = ()> + Send,
+        L: Layer<Routes> + Clone,
+        L::Service: Service<Request<Body>, Response = Response<Resp>> + Clone + Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Future: Send + 'static,
+        <<L as Layer<Routes>>::Service as Service<Request<Body>>>::Error:
+            Into<Box<dyn error::Error + Send + Sync>> + Send,
+        Resp: http_body::Body<Data = Bytes> + Send + 'static,
+        Resp::Error: Into<Box<dyn error::Error + Send + Sync>>,
+    {
         let cluster = Arc::new(Cluster::new(self.cfg, addr));
 
         select! {
@@ -422,11 +452,7 @@ pub struct GrpcService<S> {
 
 impl<S> GrpcService<S>
 where
-    S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
-        + NamedService
-        + Clone
-        + Send
-        + 'static,
+    S: Service<Request<Body>, Response = Response<BoxBody>> + NamedService + Clone + Send + 'static,
     S::Future: Send + 'static,
     S::Error: Into<Box<dyn error::Error + Send + Sync>> + Send,
 {
@@ -443,7 +469,7 @@ impl<S: Send> MeshService for GrpcService<S> {
 }
 
 impl<S> ExposedService for GrpcService<S>
-where S: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
+where S: Service<Request<Body>, Response = Response<BoxBody>, Error = Infallible>
         + NamedService
         + Clone
         + Send
@@ -499,7 +525,7 @@ pub trait ExposedService: MeshService + Clone {
     fn add_metadata<K: Extend<(String, Vec<u8>)>>(&self, _keys: &mut K) {}
 
     /// The service implementation.
-    type Service: Service<HttpRequest<Body>, Response = HttpResponse<BoxBody>>
+    type Service: Service<Request<Body>, Response = Response<BoxBody>, Error = Infallible>
         + NamedService
         + Clone
         + Send

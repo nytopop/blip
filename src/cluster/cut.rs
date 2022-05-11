@@ -219,10 +219,7 @@ fn endpoint(addr: SocketAddr, tls: Option<&ClientTlsConfig>) -> transport::Endpo
 impl Member {
     #[inline]
     pub(crate) fn new(addr: SocketAddr, tls: Option<Arc<ClientTlsConfig>>, meta: Metadata) -> Self {
-        let chan = endpoint(addr, tls.as_deref())
-            // NOTE: connect_lazy can't return an error as of tonic 0.2.2
-            .connect_lazy()
-            .unwrap();
+        let chan = endpoint(addr, tls.as_deref()).connect_lazy();
 
         #[rustfmt::skip]
         let m = Self { addr, tls, meta, chan };
